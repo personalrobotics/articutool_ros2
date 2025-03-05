@@ -25,7 +25,6 @@ setup(
     entry_points={
         'console_scripts': [
             'orientation_estimator = articutool_orientation.orientation_estimator:main',
-            'ik_solver = articutool_orientation.ik_solver:main',
         ],
     },
 )

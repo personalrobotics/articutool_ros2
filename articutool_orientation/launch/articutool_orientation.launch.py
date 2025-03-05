@@ -18,11 +18,4 @@ def generate_launch_description():
             parameters=[config],
             output='screen'
         ),
-        Node(
-            package='articutool_orientation',
-            executable='ik_solver',
-            name='ik_solver',
-            parameters=[config],
-            output='screen'
-        )
     ])
