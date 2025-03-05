@@ -5,7 +5,7 @@ from geometry_msgs.msg import Pose
 import numpy as np
 import pinocchio
 from pinocchio.robot_wrapper import RobotWrapper
-from articutool_orientation.articutool_orientation.pinocchio_ik import PinocchioIK
+from articutool_orientation.pinocchio_ik import PinocchioIK
 import os
 
 class IKSolver(Node):
