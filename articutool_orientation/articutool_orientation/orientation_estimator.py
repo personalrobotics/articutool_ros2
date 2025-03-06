@@ -16,13 +16,8 @@ class OrientationEstimator(Node):
         self.publisher_ = self.create_publisher(Quaternion, "estimated_orientation", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        self.last_time = (
-            self.get_clock().now().nanoseconds / 1e9
-        )
-
     def imu_callback(self, msg):
         current_time = self.get_clock().now().nanoseconds / 1e9
-        dt = current_time - self.last_time
 
         # Extract accelerometer and gyroscope data
         accel_x = msg.linear_acceleration.x
@@ -36,9 +31,6 @@ class OrientationEstimator(Node):
         roll = math.atan2(accel_y, accel_z)
         pitch = math.atan2(-accel_x, math.sqrt(accel_y**2 + accel_z**2))
         yaw = 0.0  # yaw is not determined from accelerometer alone
-
-        # Integrate gyroscope data for yaw (simple integration)
-        yaw += gyro_z * dt
 
         # Convert roll, pitch, yaw to quaternion
         qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(
@@ -66,8 +58,6 @@ class OrientationEstimator(Node):
         t.child_frame_id = "atool_handle"
         t.transform.rotation = orientation_quat
         self.tf_broadcaster.sendTransform(t)
-
-        self.last_time = current_time
 
 
 def main(args=None):
