@@ -32,10 +32,19 @@ def generate_launch_description():
             description="URDF/XACRO description file with the robot.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "end_effector_tool",
+            default_value="fork",
+            description="The end-effector tool being used",
+            choices=["fork"],
+        )
+    )
 
     # Initialize Arguments
     description_package = LaunchConfiguration("description_package")
     description_file = LaunchConfiguration("description_file")
+    end_effector_tool = LaunchConfiguration("end_effector_tool")
 
     robot_description_content = Command(
         [
@@ -44,6 +53,9 @@ def generate_launch_description():
             PathJoinSubstitution(
                 [FindPackageShare(description_package), "urdf", description_file]
             ),
+            " ",
+            "end_effector_tool:=",
+            end_effector_tool
         ]
     )
     robot_description = {
