@@ -1,3 +1,6 @@
+# Copyright (c) 2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
 import os
 from glob import glob
 from setuptools import find_packages, setup

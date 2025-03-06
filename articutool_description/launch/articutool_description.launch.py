@@ -1,5 +1,5 @@
-# Copyright (c) 2024 Jose Jaime
-# License: Apache 2.0
+# Copyright (c) 2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
 
 import launch
 from launch import LaunchDescription

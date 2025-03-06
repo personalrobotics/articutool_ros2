@@ -1,3 +1,6 @@
+# Copyright (c) 2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
