@@ -32,9 +32,23 @@ def generate_launch_description():
         ),
     )
 
+    # Include articutool_description launch file
+    description_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("articutool_description"),
+                    "launch",
+                    "articutool.launch.py",
+                )
+            ]
+        ),
+    )
+
     return LaunchDescription(
         [
             imu_launch,
             orientation_launch,
+            description_launch,
         ]
     )
