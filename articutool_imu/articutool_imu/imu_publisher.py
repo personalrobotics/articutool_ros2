@@ -14,12 +14,12 @@ from std_msgs.msg import Header
 class IMUPublisher(Node):
     def __init__(self):
         super().__init__("imu_publisher")
-        self.declare_parameter("serial_port", "/dev/ttyUSB1")
+        self.declare_parameter("imu_port", "/dev/ttyUSB1")
         self.declare_parameter("baud_rate", 115200)
         self.declare_parameter("frame_id", "imu_frame")
 
-        self.serial_port = (
-            self.get_parameter("serial_port").get_parameter_value().string_value
+        self.imu_port = (
+            self.get_parameter("imu_port").get_parameter_value().string_value
         )
         self.baud_rate = (
             self.get_parameter("baud_rate").get_parameter_value().integer_value
@@ -31,7 +31,7 @@ class IMUPublisher(Node):
         self.publisher_ = self.create_publisher(Imu, "imu_data", 10)
         timer_period = 0.01  # 100 Hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
-        self.ser = serial.Serial(self.serial_port)
+        self.ser = serial.Serial(self.imu_port)
         self.ser.baudrate = self.baud_rate
         self.get_logger().info(
             f"connected to: {self.ser.portstr} at {self.baud_rate} baud"
