@@ -18,7 +18,7 @@ class OrientationEstimator(Node):
 
         self.last_time = (
             self.get_clock().now().nanoseconds / 1e9
-        )  # Initialize last_time
+        )
 
     def imu_callback(self, msg):
         current_time = self.get_clock().now().nanoseconds / 1e9
@@ -32,7 +32,7 @@ class OrientationEstimator(Node):
         gyro_y = msg.angular_velocity.y
         gyro_z = msg.angular_velocity.z
 
-        # Simple complementary filter (you can replace with a more advanced filter)
+        # Simple complementary filter
         roll = math.atan2(accel_y, accel_z)
         pitch = math.atan2(-accel_x, math.sqrt(accel_y**2 + accel_z**2))
         yaw = 0.0  # yaw is not determined from accelerometer alone
@@ -59,11 +59,11 @@ class OrientationEstimator(Node):
         # Publish the quaternion
         self.publisher_.publish(orientation_quat)
 
-        # Broadcast the transform (optional)
+        # Broadcast the transform
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "world"  # Replace with your desired frame ID
-        t.child_frame_id = "imu_frame"  # Replace with your IMU frame ID
+        t.header.frame_id = "root"
+        t.child_frame_id = "atool_handle"
         t.transform.rotation = orientation_quat
         self.tf_broadcaster.sendTransform(t)
 
