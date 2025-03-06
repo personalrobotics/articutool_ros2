@@ -14,6 +14,7 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.descriptions import ParameterValue
 
+
 def generate_launch_description():
     declared_arguments = []
 
@@ -55,7 +56,7 @@ def generate_launch_description():
             ),
             " ",
             "end_effector_tool:=",
-            end_effector_tool
+            end_effector_tool,
         ]
     )
     robot_description = {

@@ -7,24 +7,32 @@ import math
 from geometry_msgs.msg import Quaternion, Vector3
 from std_msgs.msg import Header
 
+
 class IMUPublisher(Node):
-
     def __init__(self):
-        super().__init__('imu_publisher')
-        self.declare_parameter('serial_port', '/dev/ttyUSB0')
-        self.declare_parameter('baud_rate', 115200)
-        self.declare_parameter('frame_id', 'imu_frame')
+        super().__init__("imu_publisher")
+        self.declare_parameter("serial_port", "/dev/ttyUSB1")
+        self.declare_parameter("baud_rate", 115200)
+        self.declare_parameter("frame_id", "imu_frame")
 
-        self.serial_port = self.get_parameter('serial_port').get_parameter_value().string_value
-        self.baud_rate = self.get_parameter('baud_rate').get_parameter_value().integer_value
-        self.frame_id = self.get_parameter('frame_id').get_parameter_value().string_value
+        self.serial_port = (
+            self.get_parameter("serial_port").get_parameter_value().string_value
+        )
+        self.baud_rate = (
+            self.get_parameter("baud_rate").get_parameter_value().integer_value
+        )
+        self.frame_id = (
+            self.get_parameter("frame_id").get_parameter_value().string_value
+        )
 
-        self.publisher_ = self.create_publisher(Imu, 'imu_data', 10)
+        self.publisher_ = self.create_publisher(Imu, "imu_data", 10)
         timer_period = 0.01  # 100 Hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.ser = serial.Serial(self.serial_port)
         self.ser.baudrate = self.baud_rate
-        self.get_logger().info(f"connected to: {self.ser.portstr} at {self.baud_rate} baud")
+        self.get_logger().info(
+            f"connected to: {self.ser.portstr} at {self.baud_rate} baud"
+        )
 
         # ignore header information - wait for the empty line signifying header is over
         while True:
@@ -55,9 +63,39 @@ class IMUPublisher(Node):
                 msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
                 msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
 
-                msg.orientation_covariance = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                msg.angular_velocity_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                msg.linear_acceleration_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                msg.orientation_covariance = [
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+                msg.angular_velocity_covariance = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+                msg.linear_acceleration_covariance = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
 
                 self.publisher_.publish(msg)
             except ValueError:
@@ -68,6 +106,7 @@ class IMUPublisher(Node):
         else:
             self.get_logger().warn(f"Incorrect number of data points: {data}")
 
+
 def main(args=None):
     rclpy.init(args=args)
     imu_publisher = IMUPublisher()
@@ -75,5 +114,6 @@ def main(args=None):
     imu_publisher.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
