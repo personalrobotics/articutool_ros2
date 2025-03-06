@@ -1,0 +1,7 @@
+# Copyright (c) 2024-2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
+initial_positions:
+  # Home Position
+  atool_joint1: 0.0
+  atool_joint2: 0.0

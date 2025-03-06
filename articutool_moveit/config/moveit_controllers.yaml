@@ -1,0 +1,25 @@
+# Copyright (c) 2024-2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
+moveit_controller_manager: moveit_ros_control_interface/Ros2ControlManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - velocity_controller
+    - joint_trajectory_controller
+
+  velocity_controller:
+    type: ""
+    action_ns: commands
+    default: false
+    joints:
+      - atool_joint1
+      - atool_joint2
+
+  joint_trajectory_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - atool_joint1
+      - atool_joint2

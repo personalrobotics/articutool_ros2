@@ -1,0 +1,17 @@
+# Copyright (c) 2024-2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
+default_velocity_scaling_factor: 0.1
+default_acceleration_scaling_factor: 0.1
+
+joint_limits:
+  atool_joint1:
+    has_velocity_limits: true
+    max_velocity: 0.83775804095727813
+    has_acceleration_limits: false
+    max_acceleration: 0
+  atool_joint2:
+    has_velocity_limits: true
+    max_velocity: 0.83775804095727813
+    has_acceleration_limits: false
+    max_acceleration: 0
