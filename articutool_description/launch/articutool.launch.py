@@ -1,77 +1,84 @@
-# Copyright 2020 Yutaka Kondo <yutaka.kondo@youtalk.jp>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Copyright (c) 2024 Jose Jaime
+# License: Apache 2.0
 
-import os
-
-from ament_index_python.packages import get_package_share_directory
-
+import launch
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, Shutdown
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
-
-import xacro
-
+from launch_ros.substitutions import FindPackageShare
+from launch_ros.descriptions import ParameterValue
 
 def generate_launch_description():
-    robot_name = "articutool"
-    package_name = robot_name + "_description"
-    rviz_config = os.path.join(get_package_share_directory(
-        package_name), "launch", robot_name + ".rviz")
-    robot_description = os.path.join(get_package_share_directory(
-        package_name), "urdf", robot_name + ".urdf.xacro")
-    robot_description_config = xacro.process_file(robot_description)
+    declared_arguments = []
 
-    controller_config = os.path.join(
-        get_package_share_directory(
-            package_name), "controllers", "controllers.yaml"
+    # General arguments
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "description_package",
+            default_value="articutool_description",
+            description="Description package with robot URDF/XACRO files.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "description_file",
+            default_value="articutool_standalone.xacro",
+            description="URDF/XACRO description file with the robot.",
+        )
     )
 
-    return LaunchDescription([
-        Node(
-            package="controller_manager",
-            executable="ros2_control_node",
-            parameters=[
-                {"robot_description": robot_description_config.toxml()}, controller_config],
-            output="screen",
-        ),
+    # Initialize Arguments
+    description_package = LaunchConfiguration("description_package")
+    description_file = LaunchConfiguration("description_file")
 
-        Node(
-            package="controller_manager",
-            executable="spawner",
-            arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
-            output="screen",
-        ),
+    robot_description_content = Command(
+        [
+            PathJoinSubstitution([FindExecutable(name="xacro")]),
+            " ",
+            PathJoinSubstitution(
+                [FindPackageShare(description_package), "urdf", description_file]
+            ),
+        ]
+    )
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
-        Node(
-            package="controller_manager",
-            executable="spawner",
-            arguments=["velocity_controller", "-c", "/controller_manager"],
-            output="screen",
-        ),
+    joint_state_publisher_node = Node(
+        package="joint_state_publisher_gui",
+        executable="joint_state_publisher_gui",
+        on_exit=Shutdown(),
+    )
+    robot_state_publisher_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="both",
+        parameters=[robot_description],
+        on_exit=Shutdown(),
+    )
 
-        Node(
-            package="controller_manager",
-            executable="spawner",
-            arguments=["joint_trajectory_controller", "-c", "/controller_manager"],
-            output="screen",
-        ),
+    rviz_config_file = PathJoinSubstitution(
+        [FindPackageShare(description_package), "launch", "articutool.rviz"]
+    )
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        arguments=["-d", rviz_config_file],
+        on_exit=Shutdown(),
+    )
 
-        Node(
-            package="robot_state_publisher",
-            executable="robot_state_publisher",
-            name="robot_state_publisher",
-            parameters=[
-                {"robot_description": robot_description_config.toxml()}],
-            output="screen",
-        ),
-    ])
+    nodes_to_start = [
+        joint_state_publisher_node,
+        robot_state_publisher_node,
+        rviz_node,
+    ]
+
+    return LaunchDescription(declared_arguments + nodes_to_start)

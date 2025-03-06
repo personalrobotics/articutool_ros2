@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot name="articutool" xmlns:xacro="http://ros.org/wiki/xacro">
-  <xacro:include filename="$(find articutool_description)/urdf/articutool.xacro" />
+  <xacro:include filename="$(find articutool_description)/urdf/articutool_new.xacro" />
   <xacro:include filename="$(find articutool_description)/urdf/articutool.ros2_control.xacro" />
 
   <link name="world"/>
