@@ -28,7 +28,6 @@ find_package(dynamixel_hardware REQUIRED)
 install(DIRECTORY
   meshes
   urdf
-  controllers
   launch
   DESTINATION share/${PROJECT_NAME}
 )
