@@ -2,11 +2,14 @@
 # License: BSD 3-Clause. See LICENSE.md file in root directory.
 
 import rclpy
+import numpy as np
+import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
+from filterpy.kalman import KalmanFilter
 import math
 
 
@@ -19,9 +22,15 @@ class OrientationEstimator(Node):
         self.publisher_ = self.create_publisher(Quaternion, "estimated_orientation", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-    def imu_callback(self, msg):
-        current_time = self.get_clock().now().nanoseconds / 1e9
+        self.kf = KalmanFilter(dim_x=2, dim_z=2)
+        self.kf.x = np.array([0., 0.])  # Initial state [roll, pitch]
+        self.kf.F = np.eye(2)  # State transition matrix
+        self.kf.H = np.eye(2)  # Measurement function
+        self.kf.P *= 1000.  # Covariance matrix
+        self.kf.R = np.eye(2) * 0.01  # Measurement noise
+        self.kf.Q = np.eye(2) * 0.01  # Process noise
 
+    def imu_callback(self, msg):
         # Extract accelerometer and gyroscope data
         accel_x = msg.linear_acceleration.x
         accel_y = msg.linear_acceleration.y
@@ -35,19 +44,23 @@ class OrientationEstimator(Node):
         pitch = math.atan2(-accel_x, math.sqrt(accel_y**2 + accel_z**2))
         yaw = 0.0  # yaw is not determined from accelerometer alone
 
+        self.kf.predict()
+        self.kf.update(np.array([roll, pitch]))
+        roll_filtered, pitch_filtered = self.kf.x
+
         # Convert roll, pitch, yaw to quaternion
-        qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(
-            roll / 2
-        ) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        qy = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(
-            roll / 2
-        ) * math.cos(pitch / 2) * math.sin(yaw / 2)
-        qz = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(
-            roll / 2
-        ) * math.sin(pitch / 2) * math.cos(yaw / 2)
-        qw = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(
-            roll / 2
-        ) * math.sin(pitch / 2) * math.sin(yaw / 2)
+        qx = math.sin(roll_filtered / 2) * math.cos(pitch_filtered / 2) * math.cos(yaw / 2) - math.cos(
+            roll_filtered / 2
+        ) * math.sin(pitch_filtered / 2) * math.sin(yaw / 2)
+        qy = math.cos(roll_filtered / 2) * math.sin(pitch_filtered / 2) * math.cos(yaw / 2) + math.sin(
+            roll_filtered / 2
+        ) * math.cos(pitch_filtered / 2) * math.sin(yaw / 2)
+        qz = math.cos(roll_filtered / 2) * math.cos(pitch_filtered / 2) * math.sin(yaw / 2) - math.sin(
+            roll_filtered / 2
+        ) * math.sin(pitch_filtered / 2) * math.cos(yaw / 2)
+        qw = math.cos(roll_filtered / 2) * math.cos(pitch_filtered / 2) * math.cos(yaw / 2) + math.sin(
+            roll_filtered / 2
+        ) * math.sin(pitch_filtered / 2) * math.sin(yaw / 2)
 
         orientation_quat = Quaternion(x=qx, y=qy, z=qz, w=qw)
 
