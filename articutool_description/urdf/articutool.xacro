@@ -113,6 +113,51 @@
     params="end_effector_tool"
   >
     <link name="root"/>
+    <link name="root_roll"/>
+    <xacro:articutool_joint
+      joint_name="atool_root_to_roll"
+      type="revolute"
+      parent="root"
+      child="root_roll"
+      joint_axis_xyz="1 0 0"
+      joint_origin_xyz="0 0 0"
+      joint_origin_rpy="0 0 0"
+      joint_velocity_limit="1"
+      joint_torque_limit="1.4"
+      joint_lower_limit="${-J_PI/2}"
+      joint_upper_limit="${J_PI/2}"
+    />
+
+    <link name="root_pitch"/>
+    <xacro:articutool_joint
+      joint_name="atool_roll_to_pitch"
+      type="revolute"
+      parent="root_roll"
+      child="root_pitch"
+      joint_axis_xyz="0 1 0"
+      joint_origin_xyz="0 0 0"
+      joint_origin_rpy="0 0 0"
+      joint_velocity_limit="1"
+      joint_torque_limit="1.4"
+      joint_lower_limit="${-J_PI/2}"
+      joint_upper_limit="${J_PI/2}"
+    />
+
+    <link name="root_yaw"/>
+    <xacro:articutool_joint
+      joint_name="atool_pitch_to_yaw"
+      type="revolute"
+      parent="root_pitch"
+      child="root_yaw"
+      joint_axis_xyz="0 0 1"
+      joint_origin_xyz="0 0 0"
+      joint_origin_rpy="0 0 0"
+      joint_velocity_limit="1"
+      joint_torque_limit="1.4"
+      joint_lower_limit="${-J_PI/2}"
+      joint_upper_limit="${J_PI/2}"
+    />
+
     <xacro:articutool_link
       link_name="atool_handle"
       link_mesh="2023_03_09_forkHandle"
@@ -131,7 +176,7 @@
     <xacro:articutool_joint
       joint_name="atool_root_to_handle"
       type="fixed"
-      parent="root"
+      parent="root_yaw"
       child="atool_handle"
       joint_axis_xyz="0 0 1"
       joint_origin_xyz="0 0 0"

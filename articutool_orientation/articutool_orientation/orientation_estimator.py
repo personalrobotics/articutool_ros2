@@ -6,11 +6,13 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Quaternion
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 from filterpy.kalman import KalmanFilter
 import math
+import tf_transformations
 
 
 class OrientationEstimator(Node):
@@ -19,8 +21,8 @@ class OrientationEstimator(Node):
         self.subscription = self.create_subscription(
             Imu, "imu_data", self.imu_callback, 10
         )
-        self.publisher_ = self.create_publisher(Quaternion, "estimated_orientation", 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
+        self.orientation_publisher = self.create_publisher(Quaternion, "estimated_orientation", 10)
+        self.joint_state_publisher = self.create_publisher(JointState, 'joint_states', 10)
 
         self.kf = KalmanFilter(dim_x=2, dim_z=2)
         self.kf.x = np.array([0., 0.])  # Initial state [roll, pitch]
@@ -64,16 +66,18 @@ class OrientationEstimator(Node):
 
         orientation_quat = Quaternion(x=qx, y=qy, z=qz, w=qw)
 
-        # Publish the quaternion
-        self.publisher_.publish(orientation_quat)
+        roll, pitch, yaw = tf_transformations.euler_from_quaternion([orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w])
 
-        # Broadcast the transform
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "root"
-        t.child_frame_id = "atool_handle"
-        t.transform.rotation = orientation_quat
-        self.tf_broadcaster.sendTransform(t)
+        joint_state = JointState()
+        joint_state.header.stamp = self.get_clock().now().to_msg()
+        joint_state.name = ['atool_root_to_roll', 'atool_roll_to_pitch', 'atool_pitch_to_yaw']
+        joint_state.position = [roll, pitch, yaw]
+
+        # Publish the joint state
+        self.joint_state_publisher.publish(joint_state)
+
+        # Publish the quaternion
+        self.orientation_publisher.publish(orientation_quat)
 
 
 def main(args=None):
