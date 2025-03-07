@@ -64,21 +64,12 @@ def generate_launch_description():
     )
     log_level = LaunchConfiguration("log_level")
 
-    # Declare imu_port launch argument
-    imu_port_da = DeclareLaunchArgument(
-        "imu_port",
-        default_value="/dev/ttyUSB0",
-        description="USB port for the IMU",
-    )
-    imu_port = LaunchConfiguration("imu_port")
-
     # Copy from generate_demo_launch
     ld = LaunchDescription()
     ld.add_action(sim_da)
     ld.add_action(eet_da)
     ld.add_action(ctrl_da)
     ld.add_action(log_level_da)
-    ld.add_action(imu_port_da)
 
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
@@ -90,26 +81,6 @@ def generate_launch_description():
     )
     moveit_config = builder.to_moveit_configs()
 
-    # Launch the IMU publisher
-    articutool_imu_package_path = get_package_share_directory("articutool_imu")
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(articutool_imu_package_path, "launch/articutool_imu.launch.py")
-            ),
-            launch_arguments={
-                "imu_port": imu_port,
-            }.items(),
-        ),
-    )
-    articutool_orientation_package_path = get_package_share_directory("articutool_orientation")
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(articutool_orientation_package_path, "launch/articutool_orientation.launch.py")
-            ),
-        )
-    )
     ld.add_action(
         DeclareBooleanLaunchArg(
             "debug",
