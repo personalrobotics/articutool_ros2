@@ -44,7 +44,7 @@ class OrientationControl(Node):
         self.joint_states = JointState()
 
         # PID gains (to be tuned)
-        self.kp = 1.0
+        self.kp = 5.0
         self.ki = 0.01
         self.kd = 0.1
 
