@@ -7,6 +7,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 import os
 from ament_index_python.packages import get_package_share_directory
+from launch_ros.actions import Node  # Import Node action
 
 
 def generate_launch_description():
@@ -103,6 +104,14 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Launch orientation_control node
+    orientation_control_node = Node(
+        package="articutool_system",
+        executable="orientation_control",
+        name="orientation_control",
+        output="screen",
+    )
+
     return LaunchDescription(
         [
             imu_port_arg,
@@ -113,5 +122,6 @@ def generate_launch_description():
             imu_launch,
             orientation_launch,
             moveit_launch,
+            orientation_control_node,
         ]
     )

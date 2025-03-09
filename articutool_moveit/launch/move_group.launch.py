@@ -62,12 +62,6 @@ def generate_launch_description():
         default_value="real",
         description="Which sim to use: 'mock', 'isaac', or 'real'",
     )
-    # Use Octomap
-    octomap_da = DeclareLaunchArgument(
-        "use_octomap",
-        default_value="true",
-        description="Whether to use octomap for collision checking",
-    )
     # Log Level
     log_level_da = DeclareLaunchArgument(
         "log_level",
@@ -83,7 +77,6 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(sim_da)
-    ld.add_action(octomap_da)
     ld.add_action(log_level_da)
     ld.add_action(eet_da)
     ld.add_action(OpaqueFunction(function=get_move_group_launch))

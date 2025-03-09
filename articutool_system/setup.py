@@ -26,5 +26,9 @@ setup(
     description="System level launch files for the Articutool",
     license="TODO: License declaration",
     tests_require=["pytest"],
-    entry_points={},
+    entry_points={
+        'console_scripts': [
+            'orientation_control = articutool_system.orientation_control:main',
+        ],
+    },
 )
