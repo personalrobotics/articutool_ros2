@@ -3,7 +3,7 @@
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, MagneticField
 import serial
 import time
 import math
@@ -28,7 +28,9 @@ class IMUPublisher(Node):
             self.get_parameter("frame_id").get_parameter_value().string_value
         )
 
-        self.publisher_ = self.create_publisher(Imu, "imu_data", 10)
+        self.imu_publisher_ = self.create_publisher(Imu, "imu_data", 10)
+        self.mag_publisher_ = self.create_publisher(MagneticField, "magnetic_field", 10)
+
         timer_period = 0.01  # 100 Hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.ser = serial.Serial(self.imu_port)
@@ -57,50 +59,29 @@ class IMUPublisher(Node):
                 gyro_x = math.radians(float(data[5]))
                 gyro_y = math.radians(float(data[6]))
                 gyro_z = math.radians(float(data[7]))
+                mag_x = float(data[8])
+                mag_y = float(data[9])
+                mag_z = float(data[10])
 
-                msg = Imu()
-                msg.header = Header()
-                msg.header.stamp = self.get_clock().now().to_msg()
-                msg.header.frame_id = self.frame_id
+                header = Header()
+                header.stamp = self.get_clock().now().to_msg()
+                header.frame_id = self.frame_id
 
-                msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
-                msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
+                imu_msg = Imu()
+                imu_msg.header = header
+                imu_msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
+                imu_msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
+                imu_msg.orientation_covariance = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                imu_msg.angular_velocity_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                imu_msg.linear_acceleration_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-                msg.orientation_covariance = [
-                    -1.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-                msg.angular_velocity_covariance = [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-                msg.linear_acceleration_covariance = [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
+                mag_msg = MagneticField()
+                mag_msg.header = header
+                mag_msg.magnetic_field = Vector3(x=mag_x, y=mag_y, z=mag_z)
+                mag_msg.magnetic_field_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-                self.publisher_.publish(msg)
+                self.imu_publisher_.publish(imu_msg)
+                self.mag_publisher_.publish(mag_msg)
             except ValueError:
                 self.get_logger().warn(f"Could not convert data to float: {data}")
             except IndexError:
