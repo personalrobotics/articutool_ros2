@@ -54,13 +54,13 @@ class OrientationControl(Node):
         self.integral_error = np.array([0.0, 0.0, 0.0])
         self.previous_error = np.array([0.0, 0.0, 0.0])
 
-        self.dt = 0.1  # Example time step (to be adjusted)
+        self.dt = 0.1
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.timer = self.create_timer(self.dt, self.control_loop)
 
-        self.joint_limits_lower = np.array([-math.pi / 2, -math.pi / 2]) # Example roll, pitch lower limits
-        self.joint_limits_upper = np.array([math.pi / 2, math.pi / 2]) # Example roll, pitch upper limits
+        self.joint_limits_lower = np.array([-math.pi / 2, -math.pi / 2])
+        self.joint_limits_upper = np.array([math.pi / 2, math.pi / 2])
 
     def joint_state_callback(self, msg):
         self.joint_states = msg
