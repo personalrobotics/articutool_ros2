@@ -38,6 +38,9 @@ class OrientationControl(Node):
             '/velocity_controller/commands',
             10
         )
+        self.desired_orientation_subscription = self.create_subscription(
+            Quaternion, '/desired_orientation', self.desired_orientation_callback, 10
+        )
 
         self.desired_orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
         self.current_orientation = Quaternion()
@@ -70,6 +73,9 @@ class OrientationControl(Node):
             import traceback
             self.get_logger().error(traceback.format_exc())
 
+    def desired_orientation_callback(self, msg):
+        self.desired_orientation = msg
+
     def control_loop(self):
         self.calculate_control()
 
@@ -86,7 +92,6 @@ class OrientationControl(Node):
             self.integral_error += error_vector * self.dt
             derivative_error = (error_vector - self.previous_error) / self.dt
             joint_velocities = self.kp * error_vector + self.ki * self.integral_error + self.kd * derivative_error
-            self.get_logger().info(f"Joint velocities: {joint_velocities}")
 
             self.previous_error = error_vector
 
@@ -94,7 +99,6 @@ class OrientationControl(Node):
 
             # Publish joint velocities (only roll and pitch)
             velocity_command = Float64MultiArray()
-            # velocity_command.data = joint_velocities[:2].tolist() # Slicing here.
             velocity_command.data = [joint_velocities[0], joint_velocities[2]]
             self.velocity_publisher.publish(velocity_command)
         except Exception as e:
