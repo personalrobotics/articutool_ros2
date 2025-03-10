@@ -1,0 +1,5 @@
+# U2D2 (FTDI)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT9BTM52", SYMLINK+="u2d2"
+
+# IMU Sensor (CH341)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="imu"
