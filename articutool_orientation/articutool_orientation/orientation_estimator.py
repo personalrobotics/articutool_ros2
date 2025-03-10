@@ -32,7 +32,7 @@ class OrientationEstimator(Node):
         self.kf = ExtendedKalmanFilter(dim_x=6, dim_z=6)  # [roll, pitch, yaw, roll_dot, pitch_dot, yaw_dot]
         self.kf.x = np.zeros((6, 1))  # Initial state
         self.kf.P *= 10.0  # Initial covariance
-        self.kf.R = np.eye(6) * 0.01  # Measurement noise
+        self.kf.R = np.eye(6) * 0.0001  # Measurement noise
         self.kf.Q = np.eye(6) * 0.0001  # Process noise
 
         self.last_time = self.get_clock().now().nanoseconds / 1e9
