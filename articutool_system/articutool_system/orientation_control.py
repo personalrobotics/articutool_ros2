@@ -54,7 +54,7 @@ class OrientationControl(Node):
         self.integral_error = np.array([0.0, 0.0, 0.0])
         self.previous_error = np.array([0.0, 0.0, 0.0])
 
-        self.dt = 0.1
+        self.dt = 0.01 # 100 Hz
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.timer = self.create_timer(self.dt, self.control_loop)
