@@ -56,6 +56,9 @@ class OrientationControl(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.timer = self.create_timer(self.dt, self.control_loop)
 
+        self.joint_limits_lower = np.array([-math.pi / 2, -math.pi / 2]) # Example roll, pitch lower limits
+        self.joint_limits_upper = np.array([math.pi / 2, math.pi / 2]) # Example roll, pitch upper limits
+
     def joint_state_callback(self, msg):
         self.joint_states = msg
 
@@ -86,6 +89,8 @@ class OrientationControl(Node):
             self.get_logger().info(f"Joint velocities: {joint_velocities}")
 
             self.previous_error = error_vector
+
+            joint_velocities = self.apply_joint_limit_reduction(joint_velocities)
 
             # Publish joint velocities (only roll and pitch)
             velocity_command = Float64MultiArray()
@@ -144,6 +149,25 @@ class OrientationControl(Node):
         else:
             axis = np.array([x, y, z]) / s
         return axis * angle
+
+    def apply_joint_limit_reduction(self, joint_velocities):
+        if not self.joint_states.position or not self.joint_states.velocity:
+            return joint_velocities
+
+        reduced_velocities = np.copy(joint_velocities)
+        joint_positions = np.array(self.joint_states.position)
+
+        for i in [0, 1]:
+            joint_range = self.joint_limits_upper[i] - self.joint_limits_lower[i]
+            joint_center = (self.joint_limits_upper[i] + self.joint_limits_lower[i]) / 2.0
+            joint_width = joint_range / 2.0
+
+            distance_from_center = abs(joint_positions[i] - joint_center)
+            scaling_factor = math.exp(-0.5 * (distance_from_center / joint_width * 2.5) ** 2)
+
+            reduced_velocities[i] *= scaling_factor
+
+        return reduced_velocities
 
 def main(args=None):
     rclpy.init(args=args)
