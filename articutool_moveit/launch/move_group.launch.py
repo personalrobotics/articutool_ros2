@@ -29,7 +29,11 @@ def get_move_group_launch(context):
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
     builder = builder.robot_description(
-        mappings={"sim": sim, "end_effector_tool": end_effector_tool, "u2d2_port": u2d2_port}
+        mappings={
+            "sim": sim,
+            "end_effector_tool": end_effector_tool,
+            "u2d2_port": u2d2_port,
+        }
     )
     builder = builder.robot_description_semantic(
         mappings={"end_effector_tool": end_effector_tool}

@@ -57,7 +57,11 @@ def generate_launch_description():
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
     builder = builder.robot_description(
-        mappings={"sim": sim, "end_effector_tool": end_effector_tool, "u2d2_port": u2d2_port}
+        mappings={
+            "sim": sim,
+            "end_effector_tool": end_effector_tool,
+            "u2d2_port": u2d2_port,
+        }
     )
     moveit_config = builder.to_moveit_configs()
 

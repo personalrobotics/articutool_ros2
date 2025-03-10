@@ -35,7 +35,7 @@ def generate_launch_description():
         "sim",
         default_value="real",
         description="Which sim to use:",
-        choices=["mock", "real"]
+        choices=["mock", "real"],
     )
     sim = LaunchConfiguration("sim")
 
@@ -83,7 +83,11 @@ def generate_launch_description():
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
     builder = builder.robot_description(
-        mappings={"sim": sim, "end_effector_tool": end_effector_tool, "u2d2_port": u2d2_port}
+        mappings={
+            "sim": sim,
+            "end_effector_tool": end_effector_tool,
+            "u2d2_port": u2d2_port,
+        }
     )
     builder = builder.robot_description_semantic(
         mappings={"end_effector_tool": end_effector_tool}

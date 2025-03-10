@@ -71,14 +71,54 @@ class IMUPublisher(Node):
                 imu_msg.header = header
                 imu_msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
                 imu_msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
-                imu_msg.orientation_covariance = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                imu_msg.angular_velocity_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-                imu_msg.linear_acceleration_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                imu_msg.orientation_covariance = [
+                    -1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+                imu_msg.angular_velocity_covariance = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+                imu_msg.linear_acceleration_covariance = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
 
                 mag_msg = MagneticField()
                 mag_msg.header = header
                 mag_msg.magnetic_field = Vector3(x=mag_x, y=mag_y, z=mag_z)
-                mag_msg.magnetic_field_covariance = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                mag_msg.magnetic_field_covariance = [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
 
                 self.imu_publisher_.publish(imu_msg)
                 self.mag_publisher_.publish(mag_msg)

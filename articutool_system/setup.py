@@ -27,8 +27,8 @@ setup(
     license="TODO: License declaration",
     tests_require=["pytest"],
     entry_points={
-        'console_scripts': [
-            'orientation_control = articutool_system.orientation_control:main',
+        "console_scripts": [
+            "orientation_control = articutool_system.orientation_control:main",
         ],
     },
 )

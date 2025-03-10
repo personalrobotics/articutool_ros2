@@ -26,6 +26,6 @@ def generate_launch_description():
                 name="imu_node",
                 parameters=[{"imu_port": imu_port}],
                 output="screen",
-            )
+            ),
         ]
     )
