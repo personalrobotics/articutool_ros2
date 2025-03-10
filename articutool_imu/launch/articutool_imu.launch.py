@@ -10,13 +10,9 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    config = os.path.join(
-        get_package_share_directory("articutool_imu"), "config", "imu_params.yaml"
-    )
-
     imu_port_arg = DeclareLaunchArgument(
         "imu_port",
-        default_value="/dev/ttyUSB0",
+        default_value="/dev/imu",
         description="USB port for the IMU",
     )
     imu_port = LaunchConfiguration("imu_port")
@@ -28,7 +24,7 @@ def generate_launch_description():
                 package="articutool_imu",
                 executable="imu_publisher",
                 name="imu_node",
-                parameters=[config, {"imu_port": imu_port}],
+                parameters=[{"imu_port": imu_port}],
                 output="screen",
             )
         ]

@@ -14,11 +14,20 @@ def generate_launch_description():
     # Declare imu_port launch argument
     imu_port_arg = DeclareLaunchArgument(
         "imu_port",
-        default_value="/dev/ttyUSB1",
+        default_value="/dev/imu",
         description="USB port for the IMU",
     )
 
     imu_port = LaunchConfiguration("imu_port")
+
+    # Declare u2d2_port launch argument
+    u2d2_port_arg = DeclareLaunchArgument(
+        "u2d2_port",
+        default_value="/dev/u2d2",
+        description="USB port for the U2D2",
+    )
+
+    u2d2_port = LaunchConfiguration("u2d2_port")
 
     # Declare sim launch argument
     sim_arg = DeclareLaunchArgument(
@@ -101,6 +110,7 @@ def generate_launch_description():
             "end_effector_tool": end_effector_tool,
             "controllers_file": controllers_file,
             "log_level": log_level,
+            "u2d2_port": u2d2_port,
         }.items(),
     )
 
@@ -115,6 +125,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             imu_port_arg,
+            u2d2_port_arg,
             sim_arg,
             end_effector_tool_arg,
             controllers_file_arg,

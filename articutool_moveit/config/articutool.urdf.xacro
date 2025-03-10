@@ -9,6 +9,7 @@
     name="end_effector_tool"
     default="fork"
   />
+  <xacro:arg name="u2d2_port" default="/dev/u2d2" />
   <xacro:include filename="$(find articutool_description)/urdf/articutool.xacro"/>
   <xacro:include filename="articutool.ros2_control.xacro"/>
 
@@ -18,5 +19,5 @@
   />
   <xacro:articutool end_effector_tool="${end_effector_tool}"/>
 
-  <xacro:articutool_ros2_control name="articutool_ros2_control" initial_positions_file="$(arg initial_positions_file)" sim="$(arg sim)"/>
+  <xacro:articutool_ros2_control name="articutool_ros2_control" initial_positions_file="$(arg initial_positions_file)" sim="$(arg sim)" u2d2_port="$(arg u2d2_port)"/>
 </robot>

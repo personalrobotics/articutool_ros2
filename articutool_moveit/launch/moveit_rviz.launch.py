@@ -45,10 +45,19 @@ def generate_launch_description():
     end_effector_tool = LaunchConfiguration("end_effector_tool")
     ld.add_action(eet_da)
 
+    # U2D2 USB Port Launch Argument
+    u2d2_port_da = DeclareLaunchArgument(
+        "u2d2_port",
+        default_value="/dev/u2d2",
+        description="The USB port corresponding to the U2D2",
+    )
+    u2d2_port = LaunchConfiguration("u2d2_port")
+    ld.add_action(u2d2_port_da)
+
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
     builder = builder.robot_description(
-        mappings={"sim": sim, "end_effector_tool": end_effector_tool}
+        mappings={"sim": sim, "end_effector_tool": end_effector_tool, "u2d2_port": u2d2_port}
     )
     moveit_config = builder.to_moveit_configs()
 

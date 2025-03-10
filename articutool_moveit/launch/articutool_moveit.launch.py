@@ -48,6 +48,14 @@ def generate_launch_description():
     )
     end_effector_tool = LaunchConfiguration("end_effector_tool")
 
+    # U2D2 USB Port Launch Argument
+    u2d2_port_da = DeclareLaunchArgument(
+        "u2d2_port",
+        default_value="/dev/u2d2",
+        description="The USB port corresponding to the U2D2",
+    )
+    u2d2_port = LaunchConfiguration("u2d2_port")
+
     # Controllers File
     ctrl_da = DeclareLaunchArgument(
         "controllers_file",
@@ -70,11 +78,12 @@ def generate_launch_description():
     ld.add_action(eet_da)
     ld.add_action(ctrl_da)
     ld.add_action(log_level_da)
+    ld.add_action(u2d2_port_da)
 
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
     builder = builder.robot_description(
-        mappings={"sim": sim, "end_effector_tool": end_effector_tool}
+        mappings={"sim": sim, "end_effector_tool": end_effector_tool, "u2d2_port": u2d2_port}
     )
     builder = builder.robot_description_semantic(
         mappings={"end_effector_tool": end_effector_tool}
@@ -102,6 +111,7 @@ def generate_launch_description():
                     "sim": sim,
                     "log_level": log_level,
                     "end_effector_tool": end_effector_tool,
+                    "u2d2_port": u2d2_port,
                 }.items(),
             )
         )
@@ -116,6 +126,7 @@ def generate_launch_description():
                 "sim": sim,
                 "log_level": log_level,
                 "end_effector_tool": end_effector_tool,
+                "u2d2_port": u2d2_port,
             }.items(),
         )
     )
@@ -130,6 +141,7 @@ def generate_launch_description():
                 "sim": sim,
                 "log_level": log_level,
                 "end_effector_tool": end_effector_tool,
+                "u2d2_port": u2d2_port,
             }.items(),
         )
     )
@@ -144,6 +156,7 @@ def generate_launch_description():
                 "sim": sim,
                 "log_level": log_level,
                 "end_effector_tool": end_effector_tool,
+                "u2d2_port": u2d2_port,
             }.items(),
             condition=IfCondition(LaunchConfiguration("use_rviz")),
         )
@@ -172,6 +185,7 @@ def generate_launch_description():
                 "sim": sim,
                 "log_level": log_level,
                 "end_effector_tool": end_effector_tool,
+                "u2d2_port": u2d2_port,
             }.items(),
         )
     )

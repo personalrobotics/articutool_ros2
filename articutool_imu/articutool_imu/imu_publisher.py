@@ -14,7 +14,7 @@ from std_msgs.msg import Header
 class IMUPublisher(Node):
     def __init__(self):
         super().__init__("imu_publisher")
-        self.declare_parameter("imu_port", "/dev/ttyUSB1")
+        self.declare_parameter("imu_port", "/dev/imu")
         self.declare_parameter("baud_rate", 115200)
         self.declare_parameter("frame_id", "imu_frame")
 
