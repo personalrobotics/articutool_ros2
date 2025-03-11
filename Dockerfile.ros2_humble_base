@@ -1,0 +1,57 @@
+FROM ubuntu:jammy
+
+# Set locale non-interactively
+RUN apt-get update && apt-get install -y locales && \
+    locale-gen en_US en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
+    export LANG=en_US.UTF-8
+
+# Set timezone non-interactively
+ENV TZ=America/Los_Angeles
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Enable Ubuntu Universe repository
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository universe
+
+# Add ROS 2 repository keys and source list
+RUN apt-get update && apt-get install -y curl && \
+    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+# Install ROS 2 and other necessary packages
+RUN apt-get update && apt-get install -y \
+    ros-humble-desktop \
+    ros-humble-ros-base \
+    curl \
+    gnupg2 \
+    lsb-release \
+    python3 \
+    python3-pip \
+    python3-venv \
+    net-tools \
+    iputils-ping \
+    vim \
+    git \
+    build-essential \
+    cmake \
+    python3-dev \
+    libboost-all-dev \
+    libeigen3-dev \
+    tzdata \
+    usbutils \
+    python3-colcon-common-extensions \
+    python3-colcon-mixin \
+    python3-rosdep \
+    python3-vcstool \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep
+RUN rosdep init && \
+    rosdep update --rosdistro humble
+
+# Source ROS 2 setup
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+
+# Set the entry point
+CMD ["/bin/bash", "-c", "source /root/.bashrc && bash"]

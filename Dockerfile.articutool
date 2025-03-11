@@ -1,0 +1,50 @@
+FROM ros2_humble_base:latest
+
+ENV ROS_DOMAIN_ID=42
+
+# Install ROS2 control and other dependencies
+RUN apt-get update && apt-get install -y \
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    ros-humble-controller-manager \
+    ros-humble-joint-state-publisher \
+    ros-humble-joint-trajectory-controller \
+    ros-humble-diff-drive-controller \
+    ros-humble-xacro \
+    ros-humble-joint-state-publisher-gui \
+    ros-humble-dynamixel-sdk \
+    ros-humble-dynamixel-workbench-toolbox \
+    ros-humble-pinocchio \
+    ros-humble-tf-transformations \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies with pip
+RUN pip3 install pinocchio pyserial numpy scipy matplotlib filterpy
+
+# Create Articutool workspace directory
+RUN mkdir -p /articutool_ws/src
+
+# Clone Articutool repository(s)
+RUN git clone https://github.com/personalrobotics/articutool_ros2.git && \
+    mv articutool_ros2 /articutool_ws/src/
+
+# Update rosdep and apt repositories
+RUN rosdep update && apt-get update
+
+# Install Articutool dependencies with rosdep
+RUN rosdep install --from-paths /articutool_ws/src --ignore-src -r -y --rosdistro humble
+
+# Build Articutool workspace
+RUN bash -c "source /opt/ros/humble/setup.bash && cd /articutool_ws && colcon build --symlink-install"
+
+# Source Articutool setup
+RUN echo "source /articutool_ws/install/setup.bash" >> /root/.bashrc
+
+# Set the working directory
+WORKDIR /articutool_ws
+
+# Install Python dependencies from requirements.txt
+RUN pip install --no-cache-dir -r src/articutool_ros2/requirements.txt
+
+# Set the entry point
+CMD ["/bin/bash", "-c", "source /root/.bashrc && bash"]
