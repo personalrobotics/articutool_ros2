@@ -20,16 +20,16 @@ class OrientationEstimator(Node):
     def __init__(self):
         super().__init__("orientation_estimator")
         self.imu_subscription = self.create_subscription(
-            Imu, "imu_data", self.imu_callback, 10
+            Imu, "articutool/imu_data", self.imu_callback, 10
         )
         self.mag_subscription = self.create_subscription(
-            MagneticField, "magnetic_field", self.mag_callback, 10
+            MagneticField, "articutool/magnetic_field", self.mag_callback, 10
         )
         self.orientation_publisher = self.create_publisher(
-            Quaternion, "estimated_orientation", 10
+            Quaternion, "articutool/estimated_orientation", 10
         )
         self.joint_state_publisher = self.create_publisher(
-            JointState, "joint_states", 10
+            JointState, "articutool/joint_states", 10
         )
 
         # Initialize Kalman filter

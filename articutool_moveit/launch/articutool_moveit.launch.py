@@ -7,7 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 from moveit_configs_utils import MoveItConfigsBuilder
 from moveit_configs_utils.launches import generate_demo_launch
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, GroupAction, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import (
     PythonLaunchDescriptionSource,
@@ -19,7 +19,7 @@ from launch.substitutions import (
     TextSubstitution,
 )
 
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 
 from srdfdom.srdf import SRDF
 
@@ -27,7 +27,7 @@ from moveit_configs_utils.launch_utils import (
     add_debuggable_node,
     DeclareBooleanLaunchArg,
 )
-
+from moveit_configs_utils.launches import generate_rsp_launch, generate_move_group_launch, generate_spawn_controllers_launch, generate_static_virtual_joint_tfs_launch, generate_moveit_rviz_launch
 
 def generate_launch_description():
     # Sim Launch Argument
@@ -89,10 +89,11 @@ def generate_launch_description():
             "u2d2_port": u2d2_port,
         }
     )
-    builder = builder.robot_description_semantic(
-        mappings={"end_effector_tool": end_effector_tool}
-    )
     moveit_config = builder.to_moveit_configs()
+
+    # If sim is mock, set moveit_config.sensors_3d to an empty dictionary
+    if sim == "mock":
+        moveit_config.sensors_3d = {}
 
     ld.add_action(
         DeclareBooleanLaunchArg(
@@ -103,95 +104,30 @@ def generate_launch_description():
     )
     ld.add_action(DeclareBooleanLaunchArg("use_rviz", default_value=True))
 
-    # If there are virtual joints, broadcast static tf by including virtual_joints launch
-    virtual_joints_launch = (
-        moveit_config.package_path / "launch/static_virtual_joint_tfs.launch.py"
-    )
-    if virtual_joints_launch.exists():
-        ld.add_action(
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(str(virtual_joints_launch)),
-                launch_arguments={
-                    "sim": sim,
-                    "log_level": log_level,
-                    "end_effector_tool": end_effector_tool,
-                    "u2d2_port": u2d2_port,
-                }.items(),
-            )
-        )
-
-    # Given the published joint states, publish tf for the robot links
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                str(moveit_config.package_path / "launch/rsp.launch.py")
-            ),
-            launch_arguments={
-                "sim": sim,
-                "log_level": log_level,
-                "end_effector_tool": end_effector_tool,
-                "u2d2_port": u2d2_port,
-            }.items(),
-        )
-    )
-
-    # Launch the Move Group
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                str(moveit_config.package_path / "launch/move_group.launch.py")
-            ),
-            launch_arguments={
-                "sim": sim,
-                "log_level": log_level,
-                "end_effector_tool": end_effector_tool,
-                "u2d2_port": u2d2_port,
-            }.items(),
-        )
-    )
-
-    # Run Rviz and load the default config to see the state of the move_group node
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                str(moveit_config.package_path / "launch/moveit_rviz.launch.py")
-            ),
-            launch_arguments={
-                "sim": sim,
-                "log_level": log_level,
-                "end_effector_tool": end_effector_tool,
-                "u2d2_port": u2d2_port,
-            }.items(),
-            condition=IfCondition(LaunchConfiguration("use_rviz")),
-        )
-    )
-
-    robot_controllers = PathJoinSubstitution(
-        [str(moveit_config.package_path), "config", controllers_file]
-    )
-
-    # Joint Controllers
-    ld.add_action(
+    actions = [
+        PushRosNamespace('articutool'),
+        # Robot State Publisher
+        *generate_rsp_launch(moveit_config).entities,
+        # Move Group
+        *generate_move_group_launch(moveit_config).entities,
+        # RViz
+        *generate_moveit_rviz_launch(moveit_config).entities,
+        # Spawn Controllers
+        *generate_spawn_controllers_launch(moveit_config).entities,
+        # Static Virtual Joints
+        *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
+        # Joint Controllers
         Node(
             package="controller_manager",
             executable="ros2_control_node",
-            parameters=[moveit_config.robot_description, robot_controllers],
+            parameters=[moveit_config.robot_description, PathJoinSubstitution([str(moveit_config.package_path), "config", controllers_file])],
             arguments=["--ros-args", "--log-level", log_level],
-        )
-    )
+        ),
+    ]
 
-    ld.add_action(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                str(moveit_config.package_path / "launch/spawn_controllers.launch.py")
-            ),
-            launch_arguments={
-                "sim": sim,
-                "log_level": log_level,
-                "end_effector_tool": end_effector_tool,
-                "u2d2_port": u2d2_port,
-            }.items(),
-        )
+    articutool_group = GroupAction(
+        actions=actions
     )
+    ld.add_action(articutool_group)
 
     return ld

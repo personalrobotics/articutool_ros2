@@ -30,16 +30,16 @@ class OrientationControl(Node):
         self.static_rotation_inv = self.static_rotation.inv()
 
         self.joint_state_subscription = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_callback, 10
+            JointState, "articutool/joint_states", self.joint_state_callback, 10
         )
         self.orientation_subscription = self.create_subscription(
-            Quaternion, "/estimated_orientation", self.orientation_callback, 10
+            Quaternion, "articutool/estimated_orientation", self.orientation_callback, 10
         )
         self.velocity_publisher = self.create_publisher(
-            Float64MultiArray, "/velocity_controller/commands", 10
+            Float64MultiArray, "articutool/velocity_controller/commands", 10
         )
         self.desired_orientation_subscription = self.create_subscription(
-            Quaternion, "/desired_orientation", self.desired_orientation_callback, 10
+            Quaternion, "articutool/desired_orientation", self.desired_orientation_callback, 10
         )
 
         self.desired_orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)

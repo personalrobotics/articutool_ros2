@@ -1,7 +1,7 @@
 # Copyright (c) 2025, Personal Robotics Laboratory
 # License: BSD 3-Clause. See LICENSE.md file in root directory.
 
-controller_manager:
+articutool/controller_manager:
   ros__parameters:
     update_rate: 100  # Hz
 
@@ -14,13 +14,13 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-velocity_controller:
+articutool/velocity_controller:
   ros__parameters:
     joints:
       - atool_joint1
       - atool_joint2
 
-joint_trajectory_controller:
+articutool/joint_trajectory_controller:
   ros__parameters:
     joints:
       - atool_joint1
