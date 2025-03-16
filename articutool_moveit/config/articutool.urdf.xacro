@@ -4,6 +4,10 @@
   xmlns:xacro="http://ros.org/wiki/xacro"
 >
   <xacro:arg
+    name="base_parent"
+    default="root"
+  />
+  <xacro:arg
     name="initial_positions_file"
     default="initial_positions.yaml"
   />
@@ -26,7 +30,14 @@
     name="end_effector_tool"
     value="$(arg end_effector_tool)"
   />
-  <xacro:articutool end_effector_tool="${end_effector_tool}"/>
+  <xacro:property
+    name="base_parent"
+    value="$(arg base_parent)"
+  />
+  <xacro:if value="${base_parent == 'root'}">
+    <link name="${base_parent}" />
+  </xacro:if>
+  <xacro:articutool base_parent="${base_parent}" end_effector_tool="${end_effector_tool}"/>
 
   <xacro:articutool_ros2_control
     name="articutool_ros2_control"

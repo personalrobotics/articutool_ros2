@@ -110,9 +110,8 @@
 
   <xacro:macro
     name="articutool"
-    params="end_effector_tool"
+    params="base_parent end_effector_tool"
   >
-    <link name="root"/>
     <xacro:articutool_link
       link_name="atool_handle"
       link_mesh="2023_03_09_forkHandle"
@@ -131,7 +130,7 @@
     <xacro:articutool_joint
       joint_name="atool_root_to_handle"
       type="fixed"
-      parent="root"
+      parent="${base_parent}"
       child="atool_handle"
       joint_axis_xyz="0 0 1"
       joint_origin_xyz="0 0 0"
