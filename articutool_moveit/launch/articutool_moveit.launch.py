@@ -7,7 +7,13 @@ from ament_index_python.packages import get_package_share_directory
 from moveit_configs_utils import MoveItConfigsBuilder
 from moveit_configs_utils.launches import generate_demo_launch
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, GroupAction, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    LogInfo,
+    GroupAction,
+    OpaqueFunction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import (
     PythonLaunchDescriptionSource,
@@ -27,7 +33,14 @@ from moveit_configs_utils.launch_utils import (
     add_debuggable_node,
     DeclareBooleanLaunchArg,
 )
-from moveit_configs_utils.launches import generate_rsp_launch, generate_move_group_launch, generate_spawn_controllers_launch, generate_static_virtual_joint_tfs_launch, generate_moveit_rviz_launch
+from moveit_configs_utils.launches import (
+    generate_rsp_launch,
+    generate_move_group_launch,
+    generate_spawn_controllers_launch,
+    generate_static_virtual_joint_tfs_launch,
+    generate_moveit_rviz_launch,
+)
+
 
 def generate_launch_description():
     # Sim Launch Argument
@@ -105,7 +118,7 @@ def generate_launch_description():
     ld.add_action(DeclareBooleanLaunchArg("use_rviz", default_value=True))
 
     actions = [
-        PushRosNamespace('articutool'),
+        PushRosNamespace("articutool"),
         # Robot State Publisher
         *generate_rsp_launch(moveit_config).entities,
         # Move Group
@@ -120,14 +133,17 @@ def generate_launch_description():
         Node(
             package="controller_manager",
             executable="ros2_control_node",
-            parameters=[moveit_config.robot_description, PathJoinSubstitution([str(moveit_config.package_path), "config", controllers_file])],
+            parameters=[
+                moveit_config.robot_description,
+                PathJoinSubstitution(
+                    [str(moveit_config.package_path), "config", controllers_file]
+                ),
+            ],
             arguments=["--ros-args", "--log-level", log_level],
         ),
     ]
 
-    articutool_group = GroupAction(
-        actions=actions
-    )
+    articutool_group = GroupAction(actions=actions)
     ld.add_action(articutool_group)
 
     return ld

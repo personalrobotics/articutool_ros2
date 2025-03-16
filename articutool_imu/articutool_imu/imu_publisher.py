@@ -29,7 +29,9 @@ class IMUPublisher(Node):
         )
 
         self.imu_publisher_ = self.create_publisher(Imu, "articutool/imu_data", 10)
-        self.mag_publisher_ = self.create_publisher(MagneticField, "articutool/magnetic_field", 10)
+        self.mag_publisher_ = self.create_publisher(
+            MagneticField, "articutool/magnetic_field", 10
+        )
 
         timer_period = 0.01  # 100 Hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
