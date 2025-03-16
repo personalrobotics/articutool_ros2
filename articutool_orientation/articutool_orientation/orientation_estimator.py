@@ -28,9 +28,6 @@ class OrientationEstimator(Node):
         self.orientation_publisher = self.create_publisher(
             Quaternion, "articutool/estimated_orientation", 10
         )
-        self.joint_state_publisher = self.create_publisher(
-            JointState, "articutool/joint_states", 10
-        )
 
         # Initialize Kalman filter
         self.kf = ExtendedKalmanFilter(
@@ -71,16 +68,6 @@ class OrientationEstimator(Node):
             x=quat_list[0], y=quat_list[1], z=quat_list[2], w=quat_list[3]
         )
 
-        joint_state = JointState()
-        joint_state.header.stamp = self.get_clock().now().to_msg()
-        joint_state.name = [
-            "atool_root_to_roll",
-            "atool_roll_to_pitch",
-            "atool_pitch_to_yaw",
-        ]
-        joint_state.position = [roll, pitch, yaw]
-
-        self.joint_state_publisher.publish(joint_state)
         self.orientation_publisher.publish(orientation_quat)
 
     def mag_callback(self, msg):

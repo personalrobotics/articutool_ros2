@@ -124,7 +124,7 @@ class OrientationControl(Node):
     def calculate_tool_tip_orientation(self):
         try:
             transform: TransformStamped = self.tf_buffer.lookup_transform(
-                "root", "tool_tip", rclpy.time.Time()
+                "atool_handle", "tool_tip", rclpy.time.Time()
             )
             tool_tip_raw = transform.transform.rotation
 
@@ -133,9 +133,19 @@ class OrientationControl(Node):
                 [tool_tip_raw.x, tool_tip_raw.y, tool_tip_raw.z, tool_tip_raw.w]
             )
 
+            # Convert the estimated orientation to a rotation object
+            estimated_rot = R.from_quat(
+                [
+                    self.current_orientation.x,
+                    self.current_orientation.y,
+                    self.current_orientation.z,
+                    self.current_orientation.w,
+                ]
+            )
+
             # Apply the inverse static rotation
             tool_tip_rot = R.from_quat(tool_tip_quat)
-            tool_tip_corrected_rot = self.static_rotation_inv * tool_tip_rot
+            tool_tip_corrected_rot = self.static_rotation_inv * estimated_rot * tool_tip_rot
             tool_tip_corrected_quat = tool_tip_corrected_rot.as_quat()
 
             return Quaternion(
