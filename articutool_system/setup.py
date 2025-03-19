@@ -18,6 +18,10 @@ setup(
             os.path.join("share", package_name, "launch"),
             glob(os.path.join("launch", "*launch.[pxy][yma]*")),
         ),
+        (
+            os.path.join("share", package_name, "scripts"),
+            glob(os.path.join("scripts", "*.py")),
+        ),
     ],
     install_requires=["setuptools", "pinocchio"],
     zip_safe=True,
@@ -29,6 +33,7 @@ setup(
     entry_points={
         "console_scripts": [
             "orientation_control = articutool_system.orientation_control:main",
+            "articutool_keyboard_teleop = scripts.articutool_keyboard_teleop:main",
         ],
     },
 )
