@@ -137,6 +137,23 @@
       joint_origin_rpy="0 0 0"
     />
     <xacro:articutool_link
+      link_name="atool_electronics_holder"
+      link_mesh="electronics_holder"
+      mass="0.0907185"
+      cog="0.0 0.0 0.0"
+    >
+      <xacro:insert_block name="default_inertial"/>
+    </xacro:articutool_link>
+    <xacro:articutool_joint
+      joint_name="atool_handle_to_electronics_holder"
+      type="fixed"
+      parent="atool_handle"
+      child="atool_electronics_holder"
+      joint_axis_xyz="0 0 1"
+      joint_origin_xyz="-0.015 0 0"
+      joint_origin_rpy="0 ${-J_PI/2} ${J_PI}"
+    />
+    <xacro:articutool_link
       link_name="atool_base"
       link_mesh="fr12_h103"
       mass="0.0907185"
