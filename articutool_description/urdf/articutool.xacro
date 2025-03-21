@@ -316,7 +316,7 @@
       <child link="tool_tip"/>
       <parent link="tool"/>
       <origin
-        rpy="0 0 0"
+        rpy="0 0 ${-J_PI/2}"
         xyz="0.007 0 0.07"
       />
     </joint>
