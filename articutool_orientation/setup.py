@@ -22,6 +22,10 @@ setup(
             os.path.join("share", package_name, "config"),
             glob(os.path.join("config", "*.yaml")),
         ),
+        (
+            os.path.join("share", package_name, "scripts"),
+            glob(os.path.join("scripts", "*.py")),
+        ),
     ],
     install_requires=["setuptools", "pinocchio"],
     zip_safe=True,
@@ -33,6 +37,7 @@ setup(
     entry_points={
         "console_scripts": [
             "orientation_estimator = articutool_orientation.orientation_estimator:main",
+            "orientation_visualizer = scripts.orientation_visualizer:main",
         ],
     },
 )
