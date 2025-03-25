@@ -14,11 +14,6 @@ class RealSenseProcessor(Node):
             self.process_image,
             10
         )
-        self.publisher_filtered = self.create_publisher(
-            Image,
-            'filtered_image',
-            10
-        )
 
     def process_image(self, msg):
         try:
@@ -27,18 +22,8 @@ class RealSenseProcessor(Node):
             self.get_logger().error(f'Error converting image: {e}')
             return
 
-        # Apply a filter (e.g., grayscale)
-        gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-
-        # Convert back to ROS2 message
-        try:
-            filtered_msg = self.bridge.cv2_to_imgmsg(gray_image, encoding='mono8')
-            self.publisher_filtered.publish(filtered_msg)
-        except Exception as e:
-            self.get_logger().error(f'Error converting back to image message: {e}')
-
         # Display the image (optional, for debugging)
-        cv2.imshow('Filtered Image', gray_image)
+        cv2.imshow('Image', cv_image)
         cv2.waitKey(1)
 
 def main(args=None):
