@@ -4,10 +4,11 @@
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 import os
 from ament_index_python.packages import get_package_share_directory
-from launch_ros.actions import Node  # Import Node action
+from launch_ros.actions import Node
+from launch.conditions import IfCondition
 
 
 def generate_launch_description():
@@ -32,7 +33,7 @@ def generate_launch_description():
     # Declare sim launch argument
     sim_arg = DeclareLaunchArgument(
         "sim",
-        default_value="real",
+        default_value="mock",
         description="Which sim to use:",
         choices=["mock", "real"],
     )
@@ -67,6 +68,38 @@ def generate_launch_description():
 
     log_level = LaunchConfiguration("log_level")
 
+    # Declare launch imu argument
+    launch_imu_arg = DeclareLaunchArgument(
+        "launch_imu",
+        default_value="false",
+        description="Launch IMU launch file.",
+    )
+    launch_imu = LaunchConfiguration("launch_imu")
+
+    # Declare launch orientation argument
+    launch_orientation_arg = DeclareLaunchArgument(
+        "launch_orientation",
+        default_value="false",
+        description="Launch orientation launch file.",
+    )
+    launch_orientation = LaunchConfiguration("launch_orientation")
+
+    # Declare launch moveit argument
+    launch_moveit_arg = DeclareLaunchArgument(
+        "launch_moveit",
+        default_value="true",
+        description="Launch MoveIt launch file.",
+    )
+    launch_moveit = LaunchConfiguration("launch_moveit")
+
+    # Declare launch orientation control node argument
+    launch_orientation_control_arg = DeclareLaunchArgument(
+        "launch_orientation_control",
+        default_value="false",
+        description="Launch orientation control node.",
+    )
+    launch_orientation_control = LaunchConfiguration("launch_orientation_control")
+
     # Include articutool_imu launch file
     imu_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -79,6 +112,7 @@ def generate_launch_description():
             ]
         ),
         launch_arguments={"imu_port": imu_port}.items(),
+        condition=IfCondition(launch_imu),
     )
 
     # Include articutool_orientation launch file
@@ -92,6 +126,7 @@ def generate_launch_description():
                 )
             ]
         ),
+        condition=IfCondition(launch_orientation),
     )
 
     # Include articutool_moveit launch file
@@ -112,6 +147,7 @@ def generate_launch_description():
             "log_level": log_level,
             "u2d2_port": u2d2_port,
         }.items(),
+        condition=IfCondition(launch_moveit),
     )
 
     # Launch orientation_control node
@@ -120,6 +156,7 @@ def generate_launch_description():
         executable="orientation_control",
         name="orientation_control",
         output="screen",
+        condition=IfCondition(launch_orientation_control),
     )
 
     return LaunchDescription(
@@ -130,6 +167,10 @@ def generate_launch_description():
             end_effector_tool_arg,
             controllers_file_arg,
             log_level_arg,
+            launch_imu_arg,
+            launch_orientation_arg,
+            launch_moveit_arg,
+            launch_orientation_control_arg,
             imu_launch,
             orientation_launch,
             moveit_launch,
