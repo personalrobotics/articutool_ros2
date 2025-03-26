@@ -324,7 +324,7 @@
       <parent link="tool"/>
       <origin
         rpy="0 0 ${-J_PI/2}"
-        xyz="${scale * 70} 0 ${scale * 70}"
+        xyz="${scale * 7} 0 ${scale * 70}"
       />
     </joint>
   </xacro:macro>
