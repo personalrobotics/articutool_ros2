@@ -157,7 +157,7 @@
       parent="atool_handle"
       child="atool_electronics_holder"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="-0.015 0 0"
+      joint_origin_xyz="${scale * -15} 0 0"
       joint_origin_rpy="0 ${-J_PI/2} ${J_PI}"
     />
     <xacro:articutool_link
@@ -174,7 +174,7 @@
       parent="atool_handle"
       child="atool_base"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 0.076472"
+      joint_origin_xyz="0 0 ${scale * 76.472}"
       joint_origin_rpy="0 0 0"
     />
     <xacro:articutool_link
@@ -198,7 +198,7 @@
       parent="atool_base"
       child="atool_link1"
       joint_axis_xyz="0 0 -1"
-      joint_origin_xyz="0 0 0.055"
+      joint_origin_xyz="0 0 ${scale * 55}"
       joint_origin_rpy="${-J_PI/2} 0 0"
       joint_lower_limit="${-J_PI/2}"
       joint_upper_limit="${J_PI/2}"
@@ -243,7 +243,7 @@
       parent="atool_link1"
       child="atool_link2"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 -0.03825 0"
+      joint_origin_xyz="0 ${scale * -38.25} 0"
       joint_origin_rpy="${J_PI/2} 0 0"
     />
     <xacro:articutool_link
@@ -260,7 +260,7 @@
       parent="atool_link2"
       child="atool_ft_adapter"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 0.019"
+      joint_origin_xyz="0 0 ${scale * 19}"
       joint_origin_rpy="0 0 0"
       joint_lower_limit="${-J_PI}"
       joint_upper_limit="${J_PI}"
@@ -288,7 +288,7 @@
       parent="atool_ft_adapter"
       child="ft"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 0.011"
+      joint_origin_xyz="0 0 ${scale * 11}"
       joint_origin_rpy="0 0 0"
     />
     <xacro:articutool_link
@@ -312,7 +312,7 @@
       parent="ft"
       child="tool"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 0.0216"
+      joint_origin_xyz="0 0 ${scale * 21.6}"
       joint_origin_rpy="0 0 0"
     />
     <link name="tool_tip"/>
@@ -324,7 +324,7 @@
       <parent link="tool"/>
       <origin
         rpy="0 0 ${-J_PI/2}"
-        xyz="0.007 0 0.07"
+        xyz="${scale * 70} 0 ${scale * 70}"
       />
     </joint>
   </xacro:macro>
