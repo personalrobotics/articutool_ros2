@@ -113,6 +113,10 @@
     name="articutool"
     params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0'"
   >
+    <xacro:property name="xyz_list" value="${joint_origin_xyz.split(' ')}" />
+    <xacro:property name="scaled_xyz_x" value="${scale * float(xyz_list[0])}" />
+    <xacro:property name="scaled_xyz_y" value="${scale * float(xyz_list[1])}" />
+    <xacro:property name="scaled_xyz_z" value="${scale * float(xyz_list[2])}" />
     <xacro:articutool_link
       link_name="atool_handle"
       link_mesh="handle_kg2"
@@ -134,7 +138,7 @@
       parent="${base_parent}"
       child="atool_handle"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="${joint_origin_xyz}"
+      joint_origin_xyz="${scaled_xyz_x} ${scaled_xyz_y} ${scaled_xyz_z}"
       joint_origin_rpy="${joint_origin_rpy}"
     />
     <link name="atool_imu_frame"/>
