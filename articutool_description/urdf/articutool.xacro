@@ -111,7 +111,7 @@
 
   <xacro:macro
     name="articutool"
-    params="base_parent end_effector_tool"
+    params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0'"
   >
     <xacro:articutool_link
       link_name="atool_handle"
@@ -134,8 +134,8 @@
       parent="${base_parent}"
       child="atool_handle"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 0"
-      joint_origin_rpy="0 0 0"
+      joint_origin_xyz="${joint_origin_xyz}"
+      joint_origin_rpy="${joint_origin_rpy}"
     />
     <link name="atool_imu_frame"/>
     <joint name="atool_handle_to_imu_frame" type="fixed">
