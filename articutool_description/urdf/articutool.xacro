@@ -36,6 +36,7 @@
       ixz="0"
     />
   </xacro:property>
+  <xacro:property name="scale" value="0.001" />
 
   <xacro:macro
     name="articutool_link"
@@ -46,7 +47,7 @@
         <geometry>
           <mesh
             filename="package://articutool_description/meshes/${link_mesh}.stl"
-            scale="0.001 0.001 0.001"
+            scale="${scale} ${scale} ${scale}"
           />
         </geometry>
         <material name="abs">
@@ -57,7 +58,7 @@
         <geometry>
           <mesh
             filename="package://articutool_description/meshes/${link_mesh}.stl"
-            scale="0.001 0.001 0.001"
+            scale="${scale} ${scale} ${scale}"
           />
         </geometry>
       </collision>
