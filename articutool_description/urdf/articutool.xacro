@@ -135,7 +135,7 @@
       child="atool_handle"
       joint_axis_xyz="0 0 1"
       joint_origin_xyz="0 0 0"
-      joint_origin_rpy="0 ${-J_PI/2} 0"
+      joint_origin_rpy="0 0 0"
     />
     <link name="atool_imu_frame"/>
     <joint name="atool_handle_to_imu_frame" type="fixed">
