@@ -23,6 +23,7 @@ from launch.substitutions import (
     LaunchConfiguration,
     PathJoinSubstitution,
     TextSubstitution,
+    PythonExpression,
 )
 
 from launch_ros.actions import Node, PushRosNamespace
@@ -46,7 +47,7 @@ def generate_launch_description():
     # Sim Launch Argument
     sim_da = DeclareLaunchArgument(
         "sim",
-        default_value="real",
+        default_value="mock",
         description="Which sim to use:",
         choices=["mock", "real"],
     )
@@ -85,6 +86,13 @@ def generate_launch_description():
     )
     log_level = LaunchConfiguration("log_level")
 
+    launch_rviz_arg = DeclareLaunchArgument(
+        "launch_rviz",
+        default_value="false",
+        description="Launch MoveIt launch file.",
+    )
+    launch_rviz = LaunchConfiguration("launch_rviz")
+
     # Copy from generate_demo_launch
     ld = LaunchDescription()
     ld.add_action(sim_da)
@@ -92,6 +100,7 @@ def generate_launch_description():
     ld.add_action(ctrl_da)
     ld.add_action(log_level_da)
     ld.add_action(u2d2_port_da)
+    ld.add_action(launch_rviz_arg)
 
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
@@ -124,7 +133,10 @@ def generate_launch_description():
         # Move Group
         *generate_move_group_launch(moveit_config).entities,
         # RViz
-        *generate_moveit_rviz_launch(moveit_config).entities,
+        GroupAction(
+            actions=generate_moveit_rviz_launch(moveit_config).entities,
+            condition=IfCondition(launch_rviz)
+        ),
         # Spawn Controllers
         *generate_spawn_controllers_launch(moveit_config).entities,
         # Static Virtual Joints

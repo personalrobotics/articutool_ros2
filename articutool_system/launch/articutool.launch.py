@@ -100,6 +100,15 @@ def generate_launch_description():
     )
     launch_orientation_control = LaunchConfiguration("launch_orientation_control")
 
+    # Declare launch rviz argument
+    launch_rviz_arg = DeclareLaunchArgument(
+        "launch_rviz",
+        default_value="false",
+        description="Launch MoveIt launch file.",
+    )
+    launch_rviz = LaunchConfiguration("launch_rviz")
+
+
     # Include articutool_imu launch file
     imu_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -146,6 +155,7 @@ def generate_launch_description():
             "controllers_file": controllers_file,
             "log_level": log_level,
             "u2d2_port": u2d2_port,
+            "launch_rviz": launch_rviz,
         }.items(),
         condition=IfCondition(launch_moveit),
     )
@@ -171,6 +181,7 @@ def generate_launch_description():
             launch_orientation_arg,
             launch_moveit_arg,
             launch_orientation_control_arg,
+            launch_rviz_arg,
             imu_launch,
             orientation_launch,
             moveit_launch,
