@@ -93,6 +93,13 @@ def generate_launch_description():
     )
     launch_rviz = LaunchConfiguration("launch_rviz")
 
+    launch_controllers_arg = DeclareLaunchArgument(
+        "launch_controllers",
+        default_value="true",
+        description="Launch controllers",
+    )
+    launch_controllers = LaunchConfiguration("launch_controllers")
+
     # Copy from generate_demo_launch
     ld = LaunchDescription()
     ld.add_action(sim_da)
@@ -101,6 +108,7 @@ def generate_launch_description():
     ld.add_action(log_level_da)
     ld.add_action(u2d2_port_da)
     ld.add_action(launch_rviz_arg)
+    ld.add_action(launch_controllers_arg)
 
     # Get MoveIt Configs
     builder = MoveItConfigsBuilder("articutool", package_name="articutool_moveit")
@@ -109,6 +117,7 @@ def generate_launch_description():
             "sim": sim,
             "end_effector_tool": end_effector_tool,
             "u2d2_port": u2d2_port,
+            "launch_controllers": launch_controllers,
         }
     )
     moveit_config = builder.to_moveit_configs()
@@ -138,7 +147,11 @@ def generate_launch_description():
             condition=IfCondition(launch_rviz)
         ),
         # Spawn Controllers
-        *generate_spawn_controllers_launch(moveit_config).entities,
+        # *generate_spawn_controllers_launch(moveit_config).entities,
+        GroupAction(
+            actions=generate_spawn_controllers_launch(moveit_config).entities,
+            condition=IfCondition(launch_controllers)
+        ),
         # Static Virtual Joints
         *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
         # Joint Controllers
@@ -152,6 +165,7 @@ def generate_launch_description():
                 ),
             ],
             arguments=["--ros-args", "--log-level", log_level],
+            condition=IfCondition(launch_controllers)
         ),
     ]
 

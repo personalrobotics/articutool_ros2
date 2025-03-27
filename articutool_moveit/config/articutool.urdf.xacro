@@ -23,6 +23,10 @@
     name="u2d2_port"
     default="/dev/u2d2"
   />
+  <xacro:arg
+    name="launch_controllers"
+    default="true"
+  />
   <xacro:include filename="$(find articutool_description)/urdf/articutool.xacro"/>
   <xacro:include filename="articutool.ros2_control.xacro"/>
 
@@ -39,10 +43,12 @@
   </xacro:if>
   <xacro:articutool base_parent="${base_parent}" end_effector_tool="${end_effector_tool}"/>
 
-  <xacro:articutool_ros2_control
-    name="articutool_ros2_control"
-    initial_positions_file="$(arg initial_positions_file)"
-    sim="$(arg sim)"
-    u2d2_port="$(arg u2d2_port)"
-  />
+  <xacro:if value="$(arg launch_controllers)">
+    <xacro:articutool_ros2_control
+      name="articutool_ros2_control"
+      initial_positions_file="$(arg initial_positions_file)"
+      sim="$(arg sim)"
+      u2d2_port="$(arg u2d2_port)"
+    />
+  </xacro:if>
 </robot>
