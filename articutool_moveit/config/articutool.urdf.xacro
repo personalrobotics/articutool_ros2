@@ -27,6 +27,14 @@
     name="launch_controllers"
     default="true"
   />
+  <xacro:arg
+    name="joint_origin_xyz"
+    default="0 0 0"
+  />
+  <xacro:arg
+    name="joint_origin_rpy"
+    default="0 0 0"
+  />
   <xacro:include filename="$(find articutool_description)/urdf/articutool.xacro"/>
   <xacro:include filename="articutool.ros2_control.xacro"/>
 
@@ -41,7 +49,7 @@
   <xacro:if value="${base_parent == 'root'}">
     <link name="${base_parent}" />
   </xacro:if>
-  <xacro:articutool base_parent="${base_parent}" end_effector_tool="${end_effector_tool}"/>
+  <xacro:articutool base_parent="${base_parent}" end_effector_tool="${end_effector_tool}" joint_origin_xyz="$(arg joint_origin_xyz)" joint_origin_rpy="$(arg joint_origin_rpy)"/>
 
   <xacro:if value="$(arg launch_controllers)">
     <xacro:articutool_ros2_control
