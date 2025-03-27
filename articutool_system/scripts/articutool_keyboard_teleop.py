@@ -40,8 +40,8 @@ JOINT_NAMES = [
     "atool_joint2",
 ]
 JOINT_VEL_CMD = 0.5  # rad/s
-JOINT_POS_CMD = 0.1 # rad
-ORIENTATION_CMD = 0.1 # Quaternion change
+JOINT_POS_CMD = 0.1  # rad
+ORIENTATION_CMD = 0.1  # Quaternion change
 COMMAND_KEYS = ["1", "2"]
 
 NAMESPACE = "articutool"
@@ -51,6 +51,7 @@ JOINT_TRAJECTORY_CONTROLLER_NAME = "joint_trajectory_controller"
 VELOCITY_CONTROLLER_TOPIC = f"/{NAMESPACE}/{VELOCITY_CONTROLLER_NAME}"
 JOINT_TRAJECTORY_CONTROLLER_TOPIC = f"/{NAMESPACE}/{JOINT_TRAJECTORY_CONTROLLER_NAME}"
 DESIRED_ORIENTATION_TOPIC = f"{NAMESPACE}/desired_orientation"
+
 
 def get_key(settings):
     tty.setraw(sys.stdin.fileno())
@@ -62,24 +63,34 @@ def get_key(settings):
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
     return key
 
+
 def validate_key(key):
     return key in COMMAND_KEYS
 
+
 class ControllerSwitcher(Node):
     def __init__(self):
-        super().__init__('controller_switcher')
+        super().__init__("controller_switcher")
         self.switch_controller_client = self.create_client(
-            SwitchController, f'{CONTROLLER_MANAGER}/switch_controller')
+            SwitchController, f"{CONTROLLER_MANAGER}/switch_controller"
+        )
         self.list_controllers_client = self.create_client(
-            ListControllers, f'{CONTROLLER_MANAGER}/list_controllers')
+            ListControllers, f"{CONTROLLER_MANAGER}/list_controllers"
+        )
 
         while not self.switch_controller_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Switch controller service not available, waiting again...')
+            self.get_logger().info(
+                "Switch controller service not available, waiting again..."
+            )
 
         while not self.list_controllers_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('List controller service not available, waiting again...')
+            self.get_logger().info(
+                "List controller service not available, waiting again..."
+            )
 
-    def switch_controllers(self, activate_controllers, deactivate_controllers, strictness=1):
+    def switch_controllers(
+        self, activate_controllers, deactivate_controllers, strictness=1
+    ):
         request = SwitchController.Request()
         request.activate_controllers = activate_controllers
         request.deactivate_controllers = deactivate_controllers
@@ -98,16 +109,21 @@ class ControllerSwitcher(Node):
         rclpy.spin_until_future_complete(self, future)
         if future.result() is not None:
             for controller in future.result().controller:
-                self.get_logger().info(f"Controller: {controller.name}, State: {controller.state}")
+                self.get_logger().info(
+                    f"Controller: {controller.name}, State: {controller.state}"
+                )
         else:
             self.get_logger().error("Service call failed.")
+
 
 def main(args=None):
     settings = termios.tcgetattr(sys.stdin)
     rclpy.init(args=args)
     node = Node("articutool_keyboard_teleop")
     controller_switcher = ControllerSwitcher()
-    controller_switcher.switch_controllers([VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME])
+    controller_switcher.switch_controllers(
+        [VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME]
+    )
 
     velocity_pub = node.create_publisher(
         Float64MultiArray, f"{VELOCITY_CONTROLLER_TOPIC}/commands", 1
@@ -115,14 +131,12 @@ def main(args=None):
     position_pub = node.create_publisher(
         JointTrajectory, f"{JOINT_TRAJECTORY_CONTROLLER_TOPIC}/joint_trajectory", 1
     )
-    orientation_pub = node.create_publisher(
-        Quaternion, DESIRED_ORIENTATION_TOPIC, 1
-    )
+    orientation_pub = node.create_publisher(Quaternion, DESIRED_ORIENTATION_TOPIC, 1)
 
     joint_direction = 1.0
     control_mode = "velocity"  # velocity, position, orientation
 
-    desired_orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0) #Initial orientation
+    desired_orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)  # Initial orientation
 
     try:
         node.get_logger().info(INSTRUCTION_MSG)
@@ -142,18 +156,24 @@ def main(args=None):
 
             elif control_mode == "joint_trajectory":
                 try:
-                    positions_str = input("Enter joint positions (radians, space-separated): ")
+                    positions_str = input(
+                        "Enter joint positions (radians, space-separated): "
+                    )
                     positions = [float(p) for p in positions_str.split()]
                     duration = float(input("Enter trajectory duration (seconds): "))
 
                     if len(positions) != len(JOINT_NAMES):
-                        raise ValueError(f"Please enter {len(JOINT_NAMES)} joint positions.")
+                        raise ValueError(
+                            f"Please enter {len(JOINT_NAMES)} joint positions."
+                        )
 
                     position_command = JointTrajectory()
                     position_command.joint_names = JOINT_NAMES
                     point = JointTrajectoryPoint()
                     point.positions = positions
-                    point.time_from_start = rclpy.duration.Duration(seconds=duration).to_msg()
+                    point.time_from_start = rclpy.duration.Duration(
+                        seconds=duration
+                    ).to_msg()
 
                     position_command.points.append(point)
                     position_pub.publish(position_command)
@@ -172,15 +192,21 @@ def main(args=None):
             elif key == "v":
                 control_mode = "velocity"
                 node.get_logger().info("Velocity control mode")
-                controller_switcher.switch_controllers([VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME])
+                controller_switcher.switch_controllers(
+                    [VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME]
+                )
             elif key == "j":
                 control_mode = "joint_trajectory"
                 node.get_logger().info("Joint trajectory control mode")
-                controller_switcher.switch_controllers([JOINT_TRAJECTORY_CONTROLLER_NAME], [VELOCITY_CONTROLLER_NAME])
+                controller_switcher.switch_controllers(
+                    [JOINT_TRAJECTORY_CONTROLLER_NAME], [VELOCITY_CONTROLLER_NAME]
+                )
             elif key == "o":
                 control_mode = "orientation"
                 node.get_logger().info("Orientation control mode")
-                controller_switcher.switch_controllers([VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME])
+                controller_switcher.switch_controllers(
+                    [VELOCITY_CONTROLLER_NAME], [JOINT_TRAJECTORY_CONTROLLER_NAME]
+                )
             elif key == "\x03":  # Ctrl+C
                 break
 

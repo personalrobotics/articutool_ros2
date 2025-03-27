@@ -36,7 +36,10 @@
       ixz="0"
     />
   </xacro:property>
-  <xacro:property name="scale" value="0.001" />
+  <xacro:property
+    name="scale"
+    value="0.001"
+  />
 
   <xacro:macro
     name="articutool_link"
@@ -113,10 +116,22 @@
     name="articutool"
     params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0'"
   >
-    <xacro:property name="xyz_list" value="${joint_origin_xyz.split(' ')}" />
-    <xacro:property name="scaled_xyz_x" value="${scale * float(xyz_list[0])}" />
-    <xacro:property name="scaled_xyz_y" value="${scale * float(xyz_list[1])}" />
-    <xacro:property name="scaled_xyz_z" value="${scale * float(xyz_list[2])}" />
+    <xacro:property
+      name="xyz_list"
+      value="${joint_origin_xyz.split(' ')}"
+    />
+    <xacro:property
+      name="scaled_xyz_x"
+      value="${scale * float(xyz_list[0])}"
+    />
+    <xacro:property
+      name="scaled_xyz_y"
+      value="${scale * float(xyz_list[1])}"
+    />
+    <xacro:property
+      name="scaled_xyz_z"
+      value="${scale * float(xyz_list[2])}"
+    />
     <xacro:articutool_link
       link_name="atool_handle"
       link_mesh="handle_kg2"
@@ -142,10 +157,16 @@
       joint_origin_rpy="${joint_origin_rpy}"
     />
     <link name="atool_imu_frame"/>
-    <joint name="atool_handle_to_imu_frame" type="fixed">
+    <joint
+      name="atool_handle_to_imu_frame"
+      type="fixed"
+    >
       <parent link="atool_handle"/>
       <child link="atool_imu_frame"/>
-      <origin xyz="0 0 0" rpy="0 ${-J_PI/2} ${-J_PI}"/>
+      <origin
+        xyz="0 0 0"
+        rpy="0 ${-J_PI/2} ${-J_PI}"
+      />
     </joint>
     <xacro:articutool_link
       link_name="atool_electronics_holder"

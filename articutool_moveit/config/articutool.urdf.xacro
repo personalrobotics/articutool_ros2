@@ -47,9 +47,14 @@
     value="$(arg base_parent)"
   />
   <xacro:if value="${base_parent == 'root'}">
-    <link name="${base_parent}" />
+    <link name="${base_parent}"/>
   </xacro:if>
-  <xacro:articutool base_parent="${base_parent}" end_effector_tool="${end_effector_tool}" joint_origin_xyz="$(arg joint_origin_xyz)" joint_origin_rpy="$(arg joint_origin_rpy)"/>
+  <xacro:articutool
+    base_parent="${base_parent}"
+    end_effector_tool="${end_effector_tool}"
+    joint_origin_xyz="$(arg joint_origin_xyz)"
+    joint_origin_rpy="$(arg joint_origin_rpy)"
+  />
 
   <xacro:if value="$(arg launch_controllers)">
     <xacro:articutool_ros2_control

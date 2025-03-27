@@ -108,7 +108,6 @@ def generate_launch_description():
     )
     launch_rviz = LaunchConfiguration("launch_rviz")
 
-
     # Include articutool_imu launch file
     imu_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

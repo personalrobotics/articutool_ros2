@@ -144,13 +144,13 @@ def generate_launch_description():
         # RViz
         GroupAction(
             actions=generate_moveit_rviz_launch(moveit_config).entities,
-            condition=IfCondition(launch_rviz)
+            condition=IfCondition(launch_rviz),
         ),
         # Spawn Controllers
         # *generate_spawn_controllers_launch(moveit_config).entities,
         GroupAction(
             actions=generate_spawn_controllers_launch(moveit_config).entities,
-            condition=IfCondition(launch_controllers)
+            condition=IfCondition(launch_controllers),
         ),
         # Static Virtual Joints
         *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
@@ -165,7 +165,7 @@ def generate_launch_description():
                 ),
             ],
             arguments=["--ros-args", "--log-level", log_level],
-            condition=IfCondition(launch_controllers)
+            condition=IfCondition(launch_controllers),
         ),
     ]
 
