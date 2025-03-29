@@ -133,7 +133,6 @@ def generate_launch_description():
             description="By default, we are not in debug mode",
         )
     )
-    ld.add_action(DeclareBooleanLaunchArg("use_rviz", default_value=True))
 
     actions = [
         PushRosNamespace("articutool"),
