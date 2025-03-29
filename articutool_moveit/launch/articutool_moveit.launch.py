@@ -146,7 +146,6 @@ def generate_launch_description():
             condition=IfCondition(launch_rviz),
         ),
         # Spawn Controllers
-        # *generate_spawn_controllers_launch(moveit_config).entities,
         GroupAction(
             actions=generate_spawn_controllers_launch(moveit_config).entities,
             condition=IfCondition(launch_controllers),
