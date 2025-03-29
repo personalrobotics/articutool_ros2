@@ -136,6 +136,8 @@ def generate_launch_description():
 
     actions = [
         PushRosNamespace("articutool"),
+        # Static Virtual Joints
+        *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
         # Robot State Publisher
         *generate_rsp_launch(moveit_config).entities,
         # Move Group
@@ -145,13 +147,6 @@ def generate_launch_description():
             actions=generate_moveit_rviz_launch(moveit_config).entities,
             condition=IfCondition(launch_rviz),
         ),
-        # Spawn Controllers
-        GroupAction(
-            actions=generate_spawn_controllers_launch(moveit_config).entities,
-            condition=IfCondition(launch_controllers),
-        ),
-        # Static Virtual Joints
-        *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
         # Joint Controllers
         Node(
             package="controller_manager",
@@ -163,6 +158,11 @@ def generate_launch_description():
                 ),
             ],
             arguments=["--ros-args", "--log-level", log_level],
+            condition=IfCondition(launch_controllers),
+        ),
+        # Spawn Controllers
+        GroupAction(
+            actions=generate_spawn_controllers_launch(moveit_config).entities,
             condition=IfCondition(launch_controllers),
         ),
     ]
