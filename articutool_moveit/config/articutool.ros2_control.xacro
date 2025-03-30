@@ -15,6 +15,7 @@
       <hardware>
         <xacro:if value="${sim == 'mock'}">
           <plugin>mock_components/GenericSystem</plugin>
+          <param name="calculate_dynamics">true</param>
           <param name="mock_sensor_commands">false</param>
           <param name="state_following_offset">0.0</param>
         </xacro:if>
