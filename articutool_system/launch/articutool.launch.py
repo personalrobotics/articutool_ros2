@@ -168,6 +168,21 @@ def generate_launch_description():
         condition=IfCondition(launch_orientation_control),
     )
 
+    # Node to republish Articutool's namespaced joint states to the global /joint_states topic
+    joint_state_republisher_node = Node(
+        package="articutool_system",
+        executable="joint_state_republisher",
+        name="joint_state_republisher",
+        output="screen",
+        parameters=[
+            {"input_topic": "/articutool/joint_states"},
+            {"output_topic": "/joint_states"}
+        ],
+        arguments=["--ros-args", "--log-level", log_level],
+        condition=IfCondition(launch_moveit),
+    )
+
+
     return LaunchDescription(
         [
             imu_port_arg,
@@ -185,5 +200,6 @@ def generate_launch_description():
             orientation_launch,
             moveit_launch,
             orientation_control_node,
+            joint_state_republisher_node,
         ]
     )
