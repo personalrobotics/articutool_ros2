@@ -36,7 +36,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "orientation_estimator = articutool_orientation.orientation_estimator:main",
+            "dummy_orientation_publisher = articutool_orientation.dummy_orientation_publisher:main",
             "orientation_visualizer = scripts.orientation_visualizer:main",
         ],
     },
