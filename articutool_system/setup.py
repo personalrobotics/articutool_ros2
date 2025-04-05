@@ -23,7 +23,7 @@ setup(
             glob(os.path.join("scripts", "*.py")),
         ),
     ],
-    install_requires=["setuptools", "pinocchio"],
+    install_requires=["setuptools"],
     zip_safe=True,
     maintainer="charles",
     maintainer_email="charles@todo.todo",
