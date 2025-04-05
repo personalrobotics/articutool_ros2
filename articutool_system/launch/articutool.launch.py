@@ -134,7 +134,6 @@ def generate_launch_description():
                 )
             ]
         ),
-        launch_arguments={"sim": sim}.items(),
         condition=IfCondition(launch_orientation),
     )
 
