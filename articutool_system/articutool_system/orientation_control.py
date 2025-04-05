@@ -188,11 +188,10 @@ class OrientationControl(Node):
         except IndexError as e:
              self.get_logger().fatal(f"Setup failed (joint index issue): {e}")
              self.pinocchio_ready = False
-        except RuntimeError as e: # Catch errors from xacro processing or model loading check
+        except RuntimeError as e:
              self.get_logger().fatal(f"Setup failed: {e}")
              self.pinocchio_ready = False
         except Exception as e:
-            # Catch any other unexpected errors during setup
             self.get_logger().fatal(f"Unexpected error during Pinocchio initialization: {e}")
             import traceback
             self.get_logger().error(traceback.format_exc())
@@ -236,9 +235,9 @@ class OrientationControl(Node):
         # Initialize orientations as identity rotations using scipy
         # These store orientation relative to the world_frame
         self.desired_rot_world_tip = R.identity()
-        self.current_rot_world_imu = R.identity() # Rotation of IMU frame in world
+        self.current_rot_world_imu = R.identity()
         self.joint_states = JointState()
-        self.joint_positions = {} # Store positions by name
+        self.joint_positions = {}
 
         # PID state
         self.integral_error = np.zeros(3)
@@ -278,18 +277,16 @@ class OrientationControl(Node):
     def desired_orientation_callback(self, msg):
         # Assumes msg is desired orientation of tip_frame relative to world_frame
         try:
-            # Store as scipy Rotation object
             self.desired_rot_world_tip = R.from_quat([msg.x, msg.y, msg.z, msg.w])
         except Exception as e:
             self.get_logger().error(f"Exception in desired_orientation_callback: {e}", throttle_duration_sec=5)
 
     def control_loop(self):
         """Main PID control calculation and publishing using Jacobian."""
-        # Check if Pinocchio and essential data are ready
         if not self.pinocchio_ready or self.model is None or self.data is None:
             self.get_logger().error("Pinocchio not initialized, cannot run control loop.", throttle_duration_sec=10)
             return
-        if not self.joint_positions: # Wait for first joint_states message
+        if not self.joint_positions:
              self.get_logger().info("Waiting for initial joint states...", throttle_duration_sec=5)
              return
 
@@ -300,7 +297,7 @@ class OrientationControl(Node):
             desired_rot_world_tip = self.desired_rot_world_tip # From desired_orientation_callback
 
             # --- Get current joint positions in Pinocchio's expected order ---
-            q = np.zeros(self.model.nq) # Pinocchio expects configuration vector q
+            q = np.zeros(self.model.nq)
             all_joints_found = True
             for i, name in enumerate(self.pinocchio_joint_names_ordered):
                 if name in self.joint_positions:
@@ -309,15 +306,15 @@ class OrientationControl(Node):
                     # Handle missing joint state - crucial for safety
                     self.get_logger().error(f"Missing joint state for '{name}' required by Pinocchio. Cannot proceed.", throttle_duration_sec=5)
                     all_joints_found = False
-                    break # Exit the for loop
+                    break
 
             if not all_joints_found:
-                return # Skip control cycle if missing joints
+                return
 
             # 2. Update Pinocchio Kinematics
             # --------------------------------
             pin.forwardKinematics(self.model, self.data, q)
-            pin.updateFramePlacements(self.model, self.data) # Crucial for frame-based calculations
+            pin.updateFramePlacements(self.model, self.data)
 
             # 3. Calculate Desired & Current Orientation relative to IMU frame
             # ------------------------------------------------------------------
@@ -346,7 +343,7 @@ class OrientationControl(Node):
             # PID Calculation
             self.integral_error += error_vec_imu * self.dt
             # Basic anti-windup - consider more advanced methods if needed
-            integral_max = 1.0 # Example limit for integral term magnitude
+            integral_max = 1.0
             self.integral_error = np.clip(self.integral_error, -integral_max, integral_max)
             i_term = self.ki * self.integral_error
 
@@ -369,16 +366,16 @@ class OrientationControl(Node):
             J_world = pin.computeFrameJacobian(self.model, self.data, q, self.tip_frame_id)
 
             # Get rotation matrix from World frame TO IMU frame (R_imu_world)
-            R_imu_world = T_world_imu.rotation.T # Transpose of R_world_imu
+            R_imu_world = T_world_imu.rotation.T
 
             # Transform angular part of Jacobian (rows 3,4,5) to be expressed in IMU frame
-            J_omega_imu_full = R_imu_world @ J_world[3:6, :] # Result is 3xNV
+            J_omega_imu_full = R_imu_world @ J_world[3:6, :]
 
             # Extract columns corresponding to the controlled joints' velocity variables
-            J_omega_imu_controlled = J_omega_imu_full[:, self.controlled_vel_indices] # Result is 3x2 (since we control 2 joints)
+            J_omega_imu_controlled = J_omega_imu_full[:, self.controlled_vel_indices]
 
             # Extract rows corresponding to desired control axes (Roll=IMU X=row 0, Pitch=IMU Y=row 1)
-            J_omega_rp = J_omega_imu_controlled[[0, 1], :] # Result is 2x2
+            J_omega_rp = J_omega_imu_controlled[[0, 1], :]
 
             # --- Inverse Differential Kinematics (Damped Pseudo-Inverse) ---
             try:
@@ -418,9 +415,10 @@ class OrientationControl(Node):
 
             # 8. Optional Debug Logging
             # --------------------------
-            # log_orientation_euler(self.get_logger(), current_rot_imu_tip, self.tip_frame, self.imu_frame, level=rclpy.logging.LoggingSeverity.DEBUG, prefix="[CTRL] ")
-            # log_orientation_euler(self.get_logger(), desired_rot_imu_tip, f"Desired {self.tip_frame}", self.imu_frame, level=rclpy.logging.LoggingSeverity.DEBUG, prefix="[CTRL] ")
-            # log_orientation_euler(self.get_logger(), error_rot_imu, "ErrorRotation", self.imu_frame, level=rclpy.logging.LoggingSeverity.DEBUG, prefix="[CTRL] ")
+            # log_orientation_euler(self.get_logger(), current_rot_world_imu, self.imu_frame, "world", prefix="[CTRL] ")
+            # log_orientation_euler(self.get_logger(), current_rot_imu_tip, self.tip_frame, self.imu_frame, prefix="[CTRL] ")
+            # log_orientation_euler(self.get_logger(), desired_rot_imu_tip, f"Desired {self.tip_frame}", self.imu_frame, prefix="[CTRL] ")
+            # log_orientation_euler(self.get_logger(), error_rot_imu, "ErrorRotation", self.imu_frame, prefix="[CTRL] ")
             # self.get_logger().debug(f"[CTRL] PID Output IMU (Wx,Wy,Wz): [{pid_output_imu[0]:.3f}, {pid_output_imu[1]:.3f}, {pid_output_imu[2]:.3f}]", throttle_duration_sec=0.1)
             # self.get_logger().debug(f"[CTRL] Omega Desired RP: [{omega_imu_desired_rp[0]:.3f}, {omega_imu_desired_rp[1]:.3f}]", throttle_duration_sec=0.1)
             # self.get_logger().debug(f"[CTRL] Jacobian J_omega_rp:\n{J_omega_rp}", throttle_duration_sec=0.1)
