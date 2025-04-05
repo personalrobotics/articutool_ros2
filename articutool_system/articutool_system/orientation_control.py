@@ -4,7 +4,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.time import Time # Use rclpy's Time for TF lookups
+from rclpy.time import Time  # Use rclpy's Time for TF lookups
 from ament_index_python.packages import get_package_share_directory
 
 from sensor_msgs.msg import JointState, Imu
@@ -22,6 +22,7 @@ import tempfile
 
 # TF2 imports
 import tf2_ros
+
 # from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
 
@@ -46,7 +47,7 @@ class OrientationControl(Node):
         self.jacobian_damping = 0.01
 
         # Control loop frequency
-        self.dt = 0.02 # 50 Hz
+        self.dt = 0.02  # 50 Hz
 
         # Load robot model using Pinocchio
         self.model = None
@@ -55,35 +56,45 @@ class OrientationControl(Node):
         temp_urdf_path = None
         try:
             # 1. Find Xacro file path
-            articutool_description_share = get_package_share_directory("articutool_description")
-            xacro_file_path = os.path.join(articutool_description_share, "urdf", "articutool_standalone.xacro")
+            articutool_description_share = get_package_share_directory(
+                "articutool_description"
+            )
+            xacro_file_path = os.path.join(
+                articutool_description_share, "urdf", "articutool_standalone.xacro"
+            )
 
             if not os.path.exists(xacro_file_path):
-                 raise FileNotFoundError(f"Xacro file not found at {xacro_file_path}")
+                raise FileNotFoundError(f"Xacro file not found at {xacro_file_path}")
 
             # 2. Run xacro to get URDF xml string
             self.get_logger().info("Processing Xacro file")
             try:
                 process = subprocess.run(
-                    ['ros2', 'run', 'xacro', 'xacro', xacro_file_path],
-                    check=True,        # Raise CalledProcessError if xacro fails
-                    capture_output=True, # Capture stdout/stderr
-                    text=True          # Decode output as text
+                    ["ros2", "run", "xacro", "xacro", xacro_file_path],
+                    check=True,  # Raise CalledProcessError if xacro fails
+                    capture_output=True,  # Capture stdout/stderr
+                    text=True,  # Decode output as text
                 )
                 urdf_xml_string = process.stdout
                 self.get_logger().info("XACRO processing successful.")
             except FileNotFoundError as e:
-                self.get_logger().fatal(f"Command 'ros2 run xacro ...' failed. Is xacro installed ('ros-{self.get_namespace().split('/')[-1]}-xacro') and ROS 2 sourced properly? Error: {e}")
+                self.get_logger().fatal(
+                    f"Command 'ros2 run xacro ...' failed. Is xacro installed ('ros-{self.get_namespace().split('/')[-1]}-xacro') and ROS 2 sourced properly? Error: {e}"
+                )
                 raise RuntimeError("Failed to find/run xacro command") from e
             except subprocess.CalledProcessError as e:
-                self.get_logger().fatal(f"XACRO processing command failed with exit code {e.returncode}.")
+                self.get_logger().fatal(
+                    f"XACRO processing command failed with exit code {e.returncode}."
+                )
                 self.get_logger().error(f"XACRO stderr:\n{e.stderr}")
                 raise RuntimeError("XACRO processing failed") from e
 
             # 3. Create a temporary file and write the URDF string to it
             # We use delete=False because Pinocchio needs to open the file by path.
             # We MUST manually delete it in the finally block.
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_urdf_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".urdf", delete=False
+            ) as temp_urdf_file:
                 temp_urdf_path = temp_urdf_file.name
                 temp_urdf_file.write(urdf_xml_string)
                 # File is flushed and closed automatically when 'with' block exits
@@ -92,7 +103,9 @@ class OrientationControl(Node):
 
             # 4. Load the model from the temporary URDF path
             self.model = pin.buildModelFromUrdf(temp_urdf_path)
-            self.get_logger().info(f"Pinocchio model loaded: {self.model.name}, nq={self.model.nq}, nv={self.model.nv}")
+            self.get_logger().info(
+                f"Pinocchio model loaded: {self.model.name}, nq={self.model.nq}, nv={self.model.nv}"
+            )
 
             # 5. Create Pinocchio data structure
             self.data = self.model.createData()
@@ -106,12 +119,12 @@ class OrientationControl(Node):
             for name in self.controlled_joint_names:
                 try:
                     jid = self.model.getJointId(name)
-                    joint_obj = self.model.joints[jid] # Get the Pinocchio Joint object
+                    joint_obj = self.model.joints[jid]  # Get the Pinocchio Joint object
 
                     # Ensure it's a single-DoF joint (like revolute/prismatic)
                     # Fixed joints have nq=0, nv=0. Multi-DoF joints have nq>1.
                     if joint_obj.nq == 1 and joint_obj.nv == 1:
-                        q_idx = joint_obj.idx_q # Index in the configuration vector 'q'
+                        q_idx = joint_obj.idx_q  # Index in the configuration vector 'q'
                         # v_idx = joint_obj.idx_v # Index in the velocity vector 'v' (should match self.controlled_vel_indices[i])
 
                         if 0 <= q_idx < self.model.nq:
@@ -127,29 +140,45 @@ class OrientationControl(Node):
                             # Pinocchio uses +/- inf for joints without limits (e.g., continuous)
                             log_lower = f"{lower:.4f}" if np.isfinite(lower) else "-inf"
                             log_upper = f"{upper:.4f}" if np.isfinite(upper) else "+inf"
-                            self.get_logger().info(f"  -> Joint '{name}': Limits extracted [{log_lower}, {log_upper}]")
+                            self.get_logger().info(
+                                f"  -> Joint '{name}': Limits extracted [{log_lower}, {log_upper}]"
+                            )
                         else:
-                            self.get_logger().warn(f"Invalid configuration index (q_idx={q_idx}) found for joint '{name}'. Cannot extract limits.")
+                            self.get_logger().warn(
+                                f"Invalid configuration index (q_idx={q_idx}) found for joint '{name}'. Cannot extract limits."
+                            )
                     else:
                         # Log if the controlled joint isn't a simple 1-DoF joint
-                        self.get_logger().warn(f"Joint '{name}' is not a standard 1-DoF joint (nq={joint_obj.nq}, nv={joint_obj.nv}). Cannot extract simple limits.")
+                        self.get_logger().warn(
+                            f"Joint '{name}' is not a standard 1-DoF joint (nq={joint_obj.nq}, nv={joint_obj.nv}). Cannot extract simple limits."
+                        )
 
                 except Exception as e:
-                    self.get_logger().error(f"Unexpected error extracting limits for joint '{name}': {e}")
+                    self.get_logger().error(
+                        f"Unexpected error extracting limits for joint '{name}': {e}"
+                    )
 
             # Final check
             if limits_extracted_count == len(self.controlled_joint_names):
-                self.get_logger().info("Successfully extracted limits for all controlled joints.")
+                self.get_logger().info(
+                    "Successfully extracted limits for all controlled joints."
+                )
             else:
-                self.get_logger().warn(f"Extracted limits for {limits_extracted_count}/{len(self.controlled_joint_names)} controlled joints. Limit avoidance may be incomplete.")
+                self.get_logger().warn(
+                    f"Extracted limits for {limits_extracted_count}/{len(self.controlled_joint_names)} controlled joints. Limit avoidance may be incomplete."
+                )
 
             # 6. Get Pinocchio frame IDs
             if not self.model.existFrame(self.imu_frame):
-                 raise ValueError(f"Frame '{self.imu_frame}' not found in Pinocchio model.")
+                raise ValueError(
+                    f"Frame '{self.imu_frame}' not found in Pinocchio model."
+                )
             self.imu_frame_id = self.model.getFrameId(self.imu_frame)
 
             if not self.model.existFrame(self.tip_frame):
-                raise ValueError(f"Frame '{self.tip_frame}' not found in Pinocchio model.")
+                raise ValueError(
+                    f"Frame '{self.tip_frame}' not found in Pinocchio model."
+                )
             self.tip_frame_id = self.model.getFrameId(self.tip_frame)
 
             # 7. Get Pinocchio joint IDs and velocity vector indices
@@ -159,41 +188,58 @@ class OrientationControl(Node):
                 jid = self.model.getJointId(name)
                 # Check if joint has associated velocity dimensions (fixed joints don't)
                 if self.model.joints[jid].nv <= 0:
-                     self.get_logger().warn(f"Joint '{name}' appears to be fixed or has no velocity dimensions (nv={self.model.joints[jid].nv}). Check configuration.")
-                     continue # Skip joints that don't move
+                    self.get_logger().warn(
+                        f"Joint '{name}' appears to be fixed or has no velocity dimensions (nv={self.model.joints[jid].nv}). Check configuration."
+                    )
+                    continue  # Skip joints that don't move
                 self.controlled_joint_ids.append(jid)
                 vel_idx = self.model.joints[jid].idx_v
                 if vel_idx < 0 or vel_idx >= self.model.nv:
-                    raise IndexError(f"Invalid velocity index {vel_idx} for joint '{name}' (nv={self.model.nv}).")
+                    raise IndexError(
+                        f"Invalid velocity index {vel_idx} for joint '{name}' (nv={self.model.nv})."
+                    )
                 self.controlled_vel_indices.append(vel_idx)
 
             # Verify we found velocity indices for all expected non-fixed joints
             if len(self.controlled_vel_indices) != len(self.controlled_joint_names):
-                 raise ValueError(f"Mismatch between expected controlled joints ({len(self.controlled_joint_names)}) and found non-fixed joints with velocity indices ({len(self.controlled_vel_indices)}). Check joint names and types.")
+                raise ValueError(
+                    f"Mismatch between expected controlled joints ({len(self.controlled_joint_names)}) and found non-fixed joints with velocity indices ({len(self.controlled_vel_indices)}). Check joint names and types."
+                )
 
             # Store the order of joints Pinocchio expects for the 'q' vector
-            self.pinocchio_joint_names_ordered = [name for name in self.model.names if name != 'universe']
+            self.pinocchio_joint_names_ordered = [
+                name for name in self.model.names if name != "universe"
+            ]
             if len(self.pinocchio_joint_names_ordered) != self.model.nq:
-                 self.get_logger().warn(f"Mismatch in Pinocchio joint names ({len(self.pinocchio_joint_names_ordered)}) vs nq ({self.model.nq})")
+                self.get_logger().warn(
+                    f"Mismatch in Pinocchio joint names ({len(self.pinocchio_joint_names_ordered)}) vs nq ({self.model.nq})"
+                )
 
-            self.get_logger().info(f"Pinocchio setup complete. Controlling joints: {self.controlled_joint_names} (vel indices: {self.controlled_vel_indices})")
+            self.get_logger().info(
+                f"Pinocchio setup complete. Controlling joints: {self.controlled_joint_names} (vel indices: {self.controlled_vel_indices})"
+            )
             self.pinocchio_ready = True
 
         except FileNotFoundError as e:
             self.get_logger().fatal(f"Setup failed: {e}")
             self.pinocchio_ready = False
         except ValueError as e:
-             self.get_logger().fatal(f"Setup failed (check frame/joint names in URDF vs code): {e}")
-             self.pinocchio_ready = False
+            self.get_logger().fatal(
+                f"Setup failed (check frame/joint names in URDF vs code): {e}"
+            )
+            self.pinocchio_ready = False
         except IndexError as e:
-             self.get_logger().fatal(f"Setup failed (joint index issue): {e}")
-             self.pinocchio_ready = False
+            self.get_logger().fatal(f"Setup failed (joint index issue): {e}")
+            self.pinocchio_ready = False
         except RuntimeError as e:
-             self.get_logger().fatal(f"Setup failed: {e}")
-             self.pinocchio_ready = False
+            self.get_logger().fatal(f"Setup failed: {e}")
+            self.pinocchio_ready = False
         except Exception as e:
-            self.get_logger().fatal(f"Unexpected error during Pinocchio initialization: {e}")
+            self.get_logger().fatal(
+                f"Unexpected error during Pinocchio initialization: {e}"
+            )
             import traceback
+
             self.get_logger().error(traceback.format_exc())
             self.pinocchio_ready = False
         finally:
@@ -201,10 +247,14 @@ class OrientationControl(Node):
             if temp_urdf_path and os.path.exists(temp_urdf_path):
                 try:
                     os.remove(temp_urdf_path)
-                    self.get_logger().info(f"Removed temporary URDF file: {temp_urdf_path}")
+                    self.get_logger().info(
+                        f"Removed temporary URDF file: {temp_urdf_path}"
+                    )
                 except OSError as e:
                     # Log warning but don't crash the node if cleanup fails
-                    self.get_logger().warn(f"Could not remove temporary URDF file {temp_urdf_path}: {e}")
+                    self.get_logger().warn(
+                        f"Could not remove temporary URDF file {temp_urdf_path}: {e}"
+                    )
 
         # --- ROS Communications ---
         self.joint_state_subscription = self.create_subscription(
@@ -248,18 +298,22 @@ class OrientationControl(Node):
             self.timer = self.create_timer(self.dt, self.control_loop)
             self.get_logger().info("Orientation Control Node Started with Pinocchio.")
         else:
-             self.get_logger().fatal("Orientation Control Node failed to initialize Pinocchio. Shutting down timer.")
+            self.get_logger().fatal(
+                "Orientation Control Node failed to initialize Pinocchio. Shutting down timer."
+            )
 
     def joint_state_callback(self, msg):
         self.joint_states = msg
         # Update joint positions dictionary for easier access
         for i, name in enumerate(msg.name):
             if name in self.controlled_joint_names:
-                 # Make sure position array is long enough
+                # Make sure position array is long enough
                 if i < len(msg.position):
                     self.joint_positions[name] = msg.position[i]
                 else:
-                    self.get_logger().warn(f"Joint '{name}' exists in names but not in position array.")
+                    self.get_logger().warn(
+                        f"Joint '{name}' exists in names but not in position array."
+                    )
 
     def imu_orientation_callback(self, msg):
         # Assumes msg.orientation is the orientation of imu_frame relative to a world fixed frame
@@ -271,30 +325,43 @@ class OrientationControl(Node):
             # Store as scipy Rotation object relative to world
             self.current_rot_world_imu = R.from_quat([q.x, q.y, q.z, q.w])
         except Exception as e:
-            self.get_logger().error(f"Exception in imu_orientation_callback: {e}", throttle_duration_sec=5)
-
+            self.get_logger().error(
+                f"Exception in imu_orientation_callback: {e}", throttle_duration_sec=5
+            )
 
     def desired_orientation_callback(self, msg):
         # Assumes msg is desired orientation of tip_frame relative to world_frame
         try:
             self.desired_rot_world_tip = R.from_quat([msg.x, msg.y, msg.z, msg.w])
         except Exception as e:
-            self.get_logger().error(f"Exception in desired_orientation_callback: {e}", throttle_duration_sec=5)
+            self.get_logger().error(
+                f"Exception in desired_orientation_callback: {e}",
+                throttle_duration_sec=5,
+            )
 
     def control_loop(self):
         """Main PID control calculation and publishing using Jacobian."""
         if not self.pinocchio_ready or self.model is None or self.data is None:
-            self.get_logger().error("Pinocchio not initialized, cannot run control loop.", throttle_duration_sec=10)
+            self.get_logger().error(
+                "Pinocchio not initialized, cannot run control loop.",
+                throttle_duration_sec=10,
+            )
             return
         if not self.joint_positions:
-             self.get_logger().info("Waiting for initial joint states...", throttle_duration_sec=5)
-             return
+            self.get_logger().info(
+                "Waiting for initial joint states...", throttle_duration_sec=5
+            )
+            return
 
         try:
             # 1. Get Current State (Orientations, Joint Positions)
             # -----------------------------------------------------
-            current_rot_world_imu = self.current_rot_world_imu # From imu_orientation_callback
-            desired_rot_world_tip = self.desired_rot_world_tip # From desired_orientation_callback
+            current_rot_world_imu = (
+                self.current_rot_world_imu
+            )  # From imu_orientation_callback
+            desired_rot_world_tip = (
+                self.desired_rot_world_tip
+            )  # From desired_orientation_callback
 
             # --- Get current joint positions in Pinocchio's expected order ---
             q = np.zeros(self.model.nq)
@@ -304,7 +371,10 @@ class OrientationControl(Node):
                     q[i] = self.joint_positions[name]
                 else:
                     # Handle missing joint state - crucial for safety
-                    self.get_logger().error(f"Missing joint state for '{name}' required by Pinocchio. Cannot proceed.", throttle_duration_sec=5)
+                    self.get_logger().error(
+                        f"Missing joint state for '{name}' required by Pinocchio. Cannot proceed.",
+                        throttle_duration_sec=5,
+                    )
                     all_joints_found = False
                     break
 
@@ -321,8 +391,12 @@ class OrientationControl(Node):
             desired_rot_imu_tip = current_rot_world_imu.inv() * desired_rot_world_tip
 
             # Get current T(imu -> tip) transform from Pinocchio
-            T_world_imu = self.data.oMf[self.imu_frame_id] # Transform from IMU frame to World frame
-            T_world_tip = self.data.oMf[self.tip_frame_id] # Transform from Tip frame to World frame
+            T_world_imu = self.data.oMf[
+                self.imu_frame_id
+            ]  # Transform from IMU frame to World frame
+            T_world_tip = self.data.oMf[
+                self.tip_frame_id
+            ]  # Transform from Tip frame to World frame
             # T_imu_tip = T_imu_world * T_world_tip = T_world_imu^-1 * T_world_tip
             T_imu_tip = T_world_imu.inverse() * T_world_tip
             current_rot_imu_tip = R.from_matrix(T_imu_tip.rotation)
@@ -335,22 +409,24 @@ class OrientationControl(Node):
             # Handle angle wrap-around
             angle = np.linalg.norm(error_vec_imu)
             if angle > math.pi:
-                 if angle > 1e-9:
+                if angle > 1e-9:
                     error_vec_imu = error_vec_imu / angle * (angle - 2.0 * math.pi)
-                 else:
-                     error_vec_imu = np.zeros(3) # Avoid NaN if angle is exactly zero
+                else:
+                    error_vec_imu = np.zeros(3)  # Avoid NaN if angle is exactly zero
 
             # PID Calculation
             self.integral_error += error_vec_imu * self.dt
             # Basic anti-windup - consider more advanced methods if needed
             integral_max = 1.0
-            self.integral_error = np.clip(self.integral_error, -integral_max, integral_max)
+            self.integral_error = np.clip(
+                self.integral_error, -integral_max, integral_max
+            )
             i_term = self.ki * self.integral_error
 
             derivative_error = (error_vec_imu - self.previous_error_vec) / self.dt
             d_term = self.kd * derivative_error
 
-            self.previous_error_vec = error_vec_imu # Update previous error
+            self.previous_error_vec = error_vec_imu  # Update previous error
 
             # PID output: Desired angular velocity correction in IMU frame [wx, wy, wz]
             pid_output_imu = self.kp * error_vec_imu + i_term + d_term
@@ -363,7 +439,9 @@ class OrientationControl(Node):
             # --- Calculate Jacobian ---
             # Compute Jacobian of the tip frame expressed in the world frame (6xNV)
             # NV = Number of velocity dimensions (usually == NQ for simple joints)
-            J_world = pin.computeFrameJacobian(self.model, self.data, q, self.tip_frame_id)
+            J_world = pin.computeFrameJacobian(
+                self.model, self.data, q, self.tip_frame_id
+            )
 
             # Get rotation matrix from World frame TO IMU frame (R_imu_world)
             R_imu_world = T_world_imu.rotation.T
@@ -382,7 +460,9 @@ class OrientationControl(Node):
                 Jt = J_omega_rp.T
                 JJt = J_omega_rp @ Jt
                 # Add damping term (lambda * I)
-                lambda_eye = self.jacobian_damping * np.eye(J_omega_rp.shape[0]) # Size is 2x2
+                lambda_eye = self.jacobian_damping * np.eye(
+                    J_omega_rp.shape[0]
+                )  # Size is 2x2
 
                 # Solve (J*J^T + lambda*I) * x = omega_desired_rp
                 # Then q_dot = J^T * x
@@ -391,23 +471,30 @@ class OrientationControl(Node):
 
                 # Check for NaN/Inf in result (can happen with extreme inputs/singularities)
                 if np.isnan(q_dot).any() or np.isinf(q_dot).any():
-                     self.get_logger().warn("NaN/Inf detected in Jacobian velocity calculation. Setting velocities to zero.", throttle_duration_sec=1)
-                     joint_velocities_raw = np.zeros(len(self.controlled_joint_names))
+                    self.get_logger().warn(
+                        "NaN/Inf detected in Jacobian velocity calculation. Setting velocities to zero.",
+                        throttle_duration_sec=1,
+                    )
+                    joint_velocities_raw = np.zeros(len(self.controlled_joint_names))
                 else:
-                     joint_velocities_raw = q_dot # Result is [j1_vel, j2_vel]
+                    joint_velocities_raw = q_dot  # Result is [j1_vel, j2_vel]
 
                 # Optional: Log condition number for singularity check
                 # cond_num = np.linalg.cond(J_omega_rp)
                 # self.get_logger().debug(f"Jacobian Condition Number: {cond_num:.2f}", throttle_duration_sec=1)
 
             except np.linalg.LinAlgError:
-                self.get_logger().warn("Jacobian inverse calculation failed (LinAlgError). Setting velocities to zero.", throttle_duration_sec=1)
+                self.get_logger().warn(
+                    "Jacobian inverse calculation failed (LinAlgError). Setting velocities to zero.",
+                    throttle_duration_sec=1,
+                )
                 joint_velocities_raw = np.zeros(len(self.controlled_joint_names))
-
 
             # 6. Apply Joint Limit Avoidance
             # --------------------------------
-            joint_velocities_limited = self.apply_joint_limit_avoidance(joint_velocities_raw)
+            joint_velocities_limited = self.apply_joint_limit_avoidance(
+                joint_velocities_raw
+            )
 
             # 7. Publish Command
             # -------------------
@@ -428,6 +515,7 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(f"Exception in control_loop: {e}")
             import traceback
+
             self.get_logger().error(traceback.format_exc())
             # Ensure motors stop if control loop fails critically
             self.publish_velocities([0.0, 0.0])
@@ -436,21 +524,28 @@ class OrientationControl(Node):
         """Reduces velocity smoothly near joint limits."""
         reduced_velocities = np.copy(joint_velocities)
         if len(self.controlled_joint_names) != len(joint_velocities):
-             self.get_logger().warn("Mismatch between controlled joints and velocity command length.")
-             return joint_velocities # Return unmodified
+            self.get_logger().warn(
+                "Mismatch between controlled joints and velocity command length."
+            )
+            return joint_velocities  # Return unmodified
 
         # Ensure margin and gain are positive to avoid math errors
-        margin = abs(math.radians(10.0)) # Use abs just in case, should be positive
-        reduction_gain = abs(self.kd) if abs(self.kd) > 1e-6 else 5.0 # Example: link to kd or use fixed positive value
+        margin = abs(math.radians(10.0))  # Use abs just in case, should be positive
+        reduction_gain = (
+            abs(self.kd) if abs(self.kd) > 1e-6 else 5.0
+        )  # Example: link to kd or use fixed positive value
         if margin <= 1e-9 or reduction_gain <= 1e-9:
-             self.get_logger().warn("Invalid margin or reduction_gain for joint limit avoidance.")
-             return joint_velocities # Skip avoidance if parameters are invalid
+            self.get_logger().warn(
+                "Invalid margin or reduction_gain for joint limit avoidance."
+            )
+            return joint_velocities  # Skip avoidance if parameters are invalid
 
         for i, joint_name in enumerate(self.controlled_joint_names):
-            if joint_name in self.joint_positions and \
-               joint_name in self.joint_limits_lower and \
-               joint_name in self.joint_limits_upper:
-
+            if (
+                joint_name in self.joint_positions
+                and joint_name in self.joint_limits_lower
+                and joint_name in self.joint_limits_upper
+            ):
                 pos = self.joint_positions[joint_name]
                 lower = self.joint_limits_lower[joint_name]
                 upper = self.joint_limits_upper[joint_name]
@@ -469,7 +564,7 @@ class OrientationControl(Node):
                     # Avoid division by zero if margin is tiny
                     base = clipped_dist_lower / margin if margin > 1e-9 else 0.0
                     # Calculate scaling factor safely
-                    current_scale = base**(1.0 / reduction_gain)
+                    current_scale = base ** (1.0 / reduction_gain)
                     scale = min(scale, current_scale)
 
                 # Approaching upper limit and commanding positive velocity
@@ -477,26 +572,29 @@ class OrientationControl(Node):
                     # Clamp distance to be non-negative for calculation
                     # Use max(0.0, ...) to prevent negative base for exponent
                     clipped_dist_upper = max(0.0, dist_to_upper)
-                     # Avoid division by zero if margin is tiny
+                    # Avoid division by zero if margin is tiny
                     base = clipped_dist_upper / margin if margin > 1e-9 else 0.0
                     # Calculate scaling factor safely
-                    current_scale = base**(1.0 / reduction_gain)
+                    current_scale = base ** (1.0 / reduction_gain)
                     scale = min(scale, current_scale)
 
                 # Apply the calculated scale factor
                 reduced_velocities[i] = vel * scale
 
             else:
-                 # Only warn periodically if limits/positions are missing
-                 self.get_logger().warn(f"Joint position or limits missing for {joint_name}", throttle_duration_sec=10)
+                # Only warn periodically if limits/positions are missing
+                self.get_logger().warn(
+                    f"Joint position or limits missing for {joint_name}",
+                    throttle_duration_sec=10,
+                )
 
         return reduced_velocities
 
     def publish_velocities(self, velocities):
         """Publishes the calculated joint velocities."""
         if len(velocities) != len(self.controlled_joint_names):
-             self.get_logger().error("Cannot publish velocities: length mismatch.")
-             return
+            self.get_logger().error("Cannot publish velocities: length mismatch.")
+            return
 
         velocity_command = Float64MultiArray()
         # Important: Ensure the data order matches the expected order by the velocity controller
@@ -506,11 +604,13 @@ class OrientationControl(Node):
         self.velocity_publisher.publish(velocity_command)
 
 
-def log_orientation_euler(logger,
-                          rotation_input, # Can be SciPy Rot, ROS Quat, or np array [x,y,z,w]
-                          target_frame: str, # Frame whose orientation is being described
-                          reference_frame: str, # Frame relative to which orientation is described
-                          prefix: str = ""): # Optional prefix for grouping logs
+def log_orientation_euler(
+    logger,
+    rotation_input,  # Can be SciPy Rot, ROS Quat, or np array [x,y,z,w]
+    target_frame: str,  # Frame whose orientation is being described
+    reference_frame: str,  # Frame relative to which orientation is described
+    prefix: str = "",
+):  # Optional prefix for grouping logs
     """
     Logs a quaternion orientation as neatly formatted Euler angles (XYZ, degrees).
 
@@ -532,46 +632,70 @@ def log_orientation_euler(logger,
             rotation = rotation_input
         elif isinstance(rotation_input, RosQuaternion):
             # Ensure quaternion is normalized before conversion for robustness
-            norm = math.sqrt(rotation_input.x**2 + rotation_input.y**2 + rotation_input.z**2 + rotation_input.w**2)
-            if abs(norm - 1.0) > 1e-6: # Check if normalization is needed
-                 logger.debug(f"Normalizing quaternion for {target_frame} in {reference_frame}", throttle_duration_sec=10)
-                 if norm > 1e-9:
-                     x = rotation_input.x / norm
-                     y = rotation_input.y / norm
-                     z = rotation_input.z / norm
-                     w = rotation_input.w / norm
-                     rotation = R.from_quat([x, y, z, w])
-                 else: # Avoid division by zero for zero quaternion
-                      rotation = R.identity()
+            norm = math.sqrt(
+                rotation_input.x**2
+                + rotation_input.y**2
+                + rotation_input.z**2
+                + rotation_input.w**2
+            )
+            if abs(norm - 1.0) > 1e-6:  # Check if normalization is needed
+                logger.debug(
+                    f"Normalizing quaternion for {target_frame} in {reference_frame}",
+                    throttle_duration_sec=10,
+                )
+                if norm > 1e-9:
+                    x = rotation_input.x / norm
+                    y = rotation_input.y / norm
+                    z = rotation_input.z / norm
+                    w = rotation_input.w / norm
+                    rotation = R.from_quat([x, y, z, w])
+                else:  # Avoid division by zero for zero quaternion
+                    rotation = R.identity()
             else:
-                 rotation = R.from_quat([rotation_input.x, rotation_input.y, rotation_input.z, rotation_input.w])
+                rotation = R.from_quat(
+                    [
+                        rotation_input.x,
+                        rotation_input.y,
+                        rotation_input.z,
+                        rotation_input.w,
+                    ]
+                )
 
-        elif isinstance(rotation_input, (np.ndarray, list, tuple)) and len(rotation_input) == 4:
+        elif (
+            isinstance(rotation_input, (np.ndarray, list, tuple))
+            and len(rotation_input) == 4
+        ):
             # Assuming [x, y, z, w] order based on common ROS/SciPy usage
             q = np.array(rotation_input)
             norm = np.linalg.norm(q)
-            if abs(norm - 1.0) > 1e-6: # Check if normalization is needed
-                 logger.debug(f"Normalizing quaternion for {target_frame} in {reference_frame}", throttle_duration_sec=10)
-                 if norm > 1e-9:
-                     q = q / norm
-                 else: # Avoid division by zero
-                      q = np.array([0.,0.,0.,1.]) # Identity if zero quaternion
+            if abs(norm - 1.0) > 1e-6:  # Check if normalization is needed
+                logger.debug(
+                    f"Normalizing quaternion for {target_frame} in {reference_frame}",
+                    throttle_duration_sec=10,
+                )
+                if norm > 1e-9:
+                    q = q / norm
+                else:  # Avoid division by zero
+                    q = np.array([0.0, 0.0, 0.0, 1.0])  # Identity if zero quaternion
             rotation = R.from_quat(q)
         else:
-            logger.warn(f"{prefix}ORIENT | Invalid input type for logging: {type(rotation_input)} for {target_frame}", throttle_duration_sec=5)
+            logger.warn(
+                f"{prefix}ORIENT | Invalid input type for logging: {type(rotation_input)} for {target_frame}",
+                throttle_duration_sec=5,
+            )
             return
 
         # --- Convert to Euler Angles (intrinsic 'xyz', degrees) ---
         # Common alternatives: 'zyx' (often used for aircraft/NED)
         # Choose one convention and stick to it for consistency.
-        euler_deg = rotation.as_euler('xyz', degrees=True)
+        euler_deg = rotation.as_euler("xyz", degrees=True)
         roll, pitch, yaw = euler_deg[0], euler_deg[1], euler_deg[2]
 
         # --- Format the Output String ---
         # :<15s reserves 15 characters for the string, left-aligned. Adjust width as needed.
         # :7.1f reserves 7 characters for the float, 1 decimal place, fixed-point.
         # This fixed width ensures alignment. Handles numbers like -123.4, 12.3, -0.1 etc.
-        frame_width = 18 # Adjust as needed for your longest frame names
+        frame_width = 18  # Adjust as needed for your longest frame names
         log_message = (
             f"{prefix}ORIENT | {target_frame:<{frame_width}} in {reference_frame:<{frame_width}} | "
             f"R: {roll:7.1f} P: {pitch:7.1f} Y: {yaw:7.1f} deg"
@@ -582,9 +706,13 @@ def log_orientation_euler(logger,
 
     except Exception as e:
         # Log exceptions specifically from this function for easier debugging
-        logger.error(f"{prefix}ORIENT | Failed during orientation logging for {target_frame}: {e}", throttle_duration_sec=5)
+        logger.error(
+            f"{prefix}ORIENT | Failed during orientation logging for {target_frame}: {e}",
+            throttle_duration_sec=5,
+        )
         import traceback
-        logger.debug(traceback.format_exc()) # Log full traceback at DEBUG level
+
+        logger.debug(traceback.format_exc())  # Log full traceback at DEBUG level
 
 
 def main(args=None):
@@ -597,11 +725,10 @@ def main(args=None):
     except Exception as e:
         print(f"Error during node execution: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
-        if 'control_node' in locals() and control_node:
-             control_node.destroy_node()
+        if "control_node" in locals() and control_node:
+            control_node.destroy_node()
         if rclpy.ok():
-             rclpy.shutdown()
-
-
+            rclpy.shutdown()

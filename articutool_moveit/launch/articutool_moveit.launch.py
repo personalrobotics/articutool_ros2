@@ -221,7 +221,10 @@ def generate_launch_description():
             respawn=False,
             parameters=move_group_params,
             remappings=[
-                ('/controller_manager/list_controllers', '/articutool/controller_manager/list_controllers'),
+                (
+                    "/controller_manager/list_controllers",
+                    "/articutool/controller_manager/list_controllers",
+                ),
             ],
         ),
     ]

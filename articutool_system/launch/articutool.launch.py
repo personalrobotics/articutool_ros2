@@ -176,12 +176,11 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {"input_topic": "/articutool/joint_states"},
-            {"output_topic": "/joint_states"}
+            {"output_topic": "/joint_states"},
         ],
         arguments=["--ros-args", "--log-level", log_level],
         condition=IfCondition(launch_moveit),
     )
-
 
     return LaunchDescription(
         [
