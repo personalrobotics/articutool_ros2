@@ -78,7 +78,7 @@
 
   <xacro:macro
     name="articutool_joint"
-    params="joint_name type parent child joint_axis_xyz joint_origin_xyz joint_origin_rpy joint_lower_limit:=${default_value} joint_upper_limit:=${default_value} joint_velocity_limit:=${default_value} joint_torque_limit:=${default_value}"
+    params="joint_name type parent child joint_axis_xyz joint_origin_xyz joint_origin_rpy joint_lower_limit:=${default_value} joint_upper_limit:=${default_value} joint_velocity_limit:=${default_value} joint_torque_limit:=${default_value} create_mimic:=false mimic_parent:=${base_parent}"
   >
     <joint
       name="${joint_name}"
@@ -109,12 +109,15 @@
         damping="0.0"
         friction="0.0"
       />
+      <xacro:if value="${create_mimic}">
+        <mimic joint="${mimic_parent}"/>
+      </xacro:if>
     </joint>
   </xacro:macro>
 
   <xacro:macro
     name="articutool"
-    params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0'"
+    params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0' dummy:='false'"
   >
     <xacro:property
       name="xyz_list"
@@ -217,19 +220,67 @@
         ixz="-45.354028"
       />
     </xacro:articutool_link>
-    <xacro:articutool_joint
-      joint_name="atool_joint1"
-      type="revolute"
-      parent="atool_base"
-      child="atool_link1"
-      joint_axis_xyz="0 0 -1"
-      joint_origin_xyz="0 0 ${scale * 55}"
-      joint_origin_rpy="${-J_PI/2} 0 0"
-      joint_lower_limit="${-J_PI/2}"
-      joint_upper_limit="${J_PI/2}"
-      joint_velocity_limit="1"
-      joint_torque_limit="1.4"
-    />
+    <link name="atool_joint1_terminator_link"/>
+    <xacro:if value="${dummy}">
+      <xacro:articutool_joint
+        joint_name="atool_joint1"
+        type="revolute"
+        parent="atool_base"
+        child="atool_joint1_terminator_link"
+        joint_axis_xyz="0 0 -1"
+        joint_origin_xyz="0 0 ${scale * 55}"
+        joint_origin_rpy="${-J_PI/2} 0 0"
+        joint_lower_limit="${-J_PI/2}"
+        joint_upper_limit="${J_PI/2}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+      />
+      <xacro:articutool_joint
+        joint_name="atool_joint1_mimic"
+        type="revolute"
+        parent="atool_base"
+        child="atool_link1"
+        joint_axis_xyz="0 0 -1"
+        joint_origin_xyz="0 0 ${scale * 55}"
+        joint_origin_rpy="${-J_PI/2} 0 0"
+        joint_lower_limit="${-J_PI/2}"
+        joint_upper_limit="${J_PI/2}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+        create_mimic="true"
+        mimic_parent="atool_joint1"
+      />
+    </xacro:if>
+    <xacro:unless value="${dummy}">
+      <xacro:articutool_joint
+        joint_name="atool_joint1"
+        type="revolute"
+        parent="atool_base"
+        child="atool_link1"
+        joint_axis_xyz="0 0 -1"
+        joint_origin_xyz="0 0 ${scale * 55}"
+        joint_origin_rpy="${-J_PI/2} 0 0"
+        joint_lower_limit="${-J_PI/2}"
+        joint_upper_limit="${J_PI/2}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+      />
+      <xacro:articutool_joint
+        joint_name="atool_joint1_mimic"
+        type="revolute"
+        parent="atool_base"
+        child="atool_joint1_terminator_link"
+        joint_axis_xyz="0 0 -1"
+        joint_origin_xyz="0 0 ${scale * 55}"
+        joint_origin_rpy="${-J_PI/2} 0 0"
+        joint_lower_limit="${-J_PI/2}"
+        joint_upper_limit="${J_PI/2}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+        create_mimic="true"
+        mimic_parent="atool_joint1"
+      />
+    </xacro:unless>
     <xacro:articutool_link
       link_name="atool_motor_link"
       link_mesh="fr12_s101"
@@ -279,19 +330,67 @@
     >
       <xacro:insert_block name="default_inertial"/>
     </xacro:articutool_link>
-    <xacro:articutool_joint
-      joint_name="atool_joint2"
-      type="revolute"
-      parent="atool_link2"
-      child="atool_ft_adapter"
-      joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 ${scale * 19}"
-      joint_origin_rpy="0 0 0"
-      joint_lower_limit="${-J_PI}"
-      joint_upper_limit="${J_PI}"
-      joint_velocity_limit="1"
-      joint_torque_limit="1.4"
-    />
+    <link name="atool_joint2_terminator_link"/>
+    <xacro:if value="${dummy}">
+      <xacro:articutool_joint
+        joint_name="atool_joint2"
+        type="revolute"
+        parent="atool_link2"
+        child="atool_joint2_terminator_link"
+        joint_axis_xyz="0 0 1"
+        joint_origin_xyz="0 0 ${scale * 19}"
+        joint_origin_rpy="0 0 0"
+        joint_lower_limit="${-J_PI}"
+        joint_upper_limit="${J_PI}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+      />
+      <xacro:articutool_joint
+        joint_name="atool_joint2_mimic"
+        type="revolute"
+        parent="atool_link2"
+        child="atool_ft_adapter"
+        joint_axis_xyz="0 0 1"
+        joint_origin_xyz="0 0 ${scale * 19}"
+        joint_origin_rpy="0 0 0"
+        joint_lower_limit="${-J_PI}"
+        joint_upper_limit="${J_PI}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+        create_mimic="true"
+        mimic_parent="atool_joint2"
+      />
+    </xacro:if>
+    <xacro:unless value="${dummy}">
+      <xacro:articutool_joint
+        joint_name="atool_joint2"
+        type="revolute"
+        parent="atool_link2"
+        child="atool_ft_adapter"
+        joint_axis_xyz="0 0 1"
+        joint_origin_xyz="0 0 ${scale * 19}"
+        joint_origin_rpy="0 0 0"
+        joint_lower_limit="${-J_PI}"
+        joint_upper_limit="${J_PI}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+      />
+      <xacro:articutool_joint
+        joint_name="atool_joint2_mimic"
+        type="revolute"
+        parent="atool_link2"
+        child="atool_joint2_terminator_link"
+        joint_axis_xyz="0 0 1"
+        joint_origin_xyz="0 0 ${scale * 19}"
+        joint_origin_rpy="0 0 0"
+        joint_lower_limit="${-J_PI}"
+        joint_upper_limit="${J_PI}"
+        joint_velocity_limit="1"
+        joint_torque_limit="1.4"
+        create_mimic="true"
+        mimic_parent="atool_joint2"
+      />
+    </xacro:unless>
     <xacro:articutool_link
       link_name="ft"
       link_mesh="ft_nano25"
