@@ -199,6 +199,6 @@ def generate_launch_description():
             orientation_launch,
             moveit_launch,
             orientation_control_node,
-            joint_state_republisher_node,
+            # joint_state_republisher_node,
         ]
     )
