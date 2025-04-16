@@ -1,0 +1,10 @@
+# articutool_control/srv/ExecuteJointTrajectory.srv
+
+# Request
+trajectory_msgs/JointTrajectory trajectory
+float64 execution_timeout
+
+---
+# Response
+bool success
+string message
