@@ -2,12 +2,12 @@ import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Time
-from articutool_control.srv import ExecuteJointTrajectory
+from articutool_interfaces.srv import ExecuteJointTrajectory
 
 class SendTrajectoryClient(Node):
     def __init__(self):
         super().__init__('send_trajectory_client')
-        self.client = self.create_client(ExecuteJointTrajectory, 'execute_joint_trajectory')
+        self.client = self.create_client(ExecuteJointTrajectory, '/articutool/execute_joint_trajectory')
         while not self.client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for the trajectory execution service...')
         self.req = ExecuteJointTrajectory.Request()
@@ -32,7 +32,7 @@ def main(args=None):
     client = SendTrajectoryClient()
 
     # Example trajectory
-    joint_names = ['joint1', 'joint2']
+    joint_names = ['atool_joint1', 'atool_joint2']
     point1 = JointTrajectoryPoint()
     point1.positions = [1.0, 2.0]
     point1.time_from_start.sec = 2
