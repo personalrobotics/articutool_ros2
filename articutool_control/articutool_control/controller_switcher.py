@@ -1,6 +1,10 @@
+# Copyright (c) 2025, Personal Robotics Laboratory
+# License: BSD 3-Clause. See LICENSE.md file in root directory.
+
 import rclpy
 from rclpy.node import Node
 from controller_manager_msgs.srv import SwitchController, ListControllers
+
 
 class ControllerSwitcher(Node):
     def __init__(self):
