@@ -108,14 +108,6 @@ def generate_launch_description():
     )
     launch_rviz = LaunchConfiguration("launch_rviz")
 
-    # Declare launch trajectory execution server argument
-    launch_trajectory_execution_server_arg = DeclareLaunchArgument(
-        "launch_trajectory_execution_server",
-        default_value="true",
-        description="Launch the trajectory execution service server.",
-    )
-    launch_trajectory_execution_server = LaunchConfiguration("launch_trajectory_execution_server")
-
     # Include articutool_imu launch file
     imu_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -176,15 +168,6 @@ def generate_launch_description():
         condition=IfCondition(launch_orientation_control),
     )
 
-    # Launch trajectory execution server node
-    trajectory_execution_server_node = Node(
-        package="articutool_control",
-        executable="trajectory_execution_server",
-        name="trajectory_execution_server",
-        output="screen",
-        condition=IfCondition(launch_trajectory_execution_server),
-    )
-
     return LaunchDescription(
         [
             imu_port_arg,
@@ -198,11 +181,9 @@ def generate_launch_description():
             launch_moveit_arg,
             launch_orientation_control_arg,
             launch_rviz_arg,
-            launch_trajectory_execution_server_arg,
             imu_launch,
             orientation_launch,
             moveit_launch,
             orientation_control_node,
-            trajectory_execution_server_node,
         ]
     )

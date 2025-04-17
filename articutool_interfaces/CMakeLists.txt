@@ -14,10 +14,10 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "srv/ExecuteJointTrajectory.srv"
-  DEPENDENCIES trajectory_msgs builtin_interfaces
-)
+# Add interfaces here if any are defined in the future
+# rosidl_generate_interfaces(${PROJECT_NAME}
+#   DEPENDENCIES trajectory_msgs builtin_interfaces
+# )
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

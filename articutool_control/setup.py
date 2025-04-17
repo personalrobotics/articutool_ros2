@@ -22,8 +22,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'trajectory_execution_server = articutool_control.trajectory_execution_server:main',
-            'send_trajectory_client = articutool_control.send_trajectory_client:main',
+            'send_trajectory_action_client = articutool_control.send_trajectory_action_client:main',
         ],
     },
 )
