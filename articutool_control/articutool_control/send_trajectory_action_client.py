@@ -5,13 +5,19 @@ from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 from sensor_msgs.msg import JointState
+from articutool_control.controller_switcher import ControllerSwitcher
 
 class SendTrajectoryActionClient(Node):
     def __init__(self):
         super().__init__('send_trajectory_action_client')
         self._action_client = ActionClient(self, FollowJointTrajectory, '/articutool/joint_trajectory_controller/follow_joint_trajectory')
+        self.controller_switcher = ControllerSwitcher()
 
     def send_trajectory_goal(self, joint_names, points):
+        self.controller_switcher.switch_controllers(
+            ["joint_trajectory_controller"], ["velocity_controller"]
+        )
+
         goal_msg = FollowJointTrajectory.Goal()
         goal_msg.trajectory.joint_names = joint_names
 
