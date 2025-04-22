@@ -35,7 +35,7 @@ class OrientationControl(Node):
         super().__init__("orientation_control")
 
         # --- Parameters ---
-        # Control gains
+        # --- Control gains ---
         p_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Proportional gains [Pitch, Roll]')
         i_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Integral gains [Pitch, Roll]')
         d_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Derivative gains [Pitch, Roll]')
@@ -65,6 +65,21 @@ class OrientationControl(Node):
         self.declare_parameter('imu_link_frame', 'atool_imu_frame', imu_link_desc)
         self.declare_parameter('tooltip_frame', 'tool_tip', tooltip_link_desc)
         self.declare_parameter('joint_names', ['atool_joint1', 'atool_joint2'], joint_names_desc)
+
+        # --- Get Parameters ---
+        self.Kp = np.array(self.get_parameter('pid_gains.p').value)
+        self.Ki = np.array(self.get_parameter('pid_gains.i').value)
+        self.Kd = np.array(self.get_parameter('pid_gains.d').value)
+        self.integral_max = self.get_parameter('integral_clamp').value
+        self.rate = self.get_parameter('loop_rate').value
+        self.feedback_topic = self.get_parameter('feedback_topic').value
+        self.command_topic = self.get_parameter('command_topic').value
+        self.joint_state_topic = self.get_parameter('joint_state_topic').value
+        self.articutool_base_link = self.get_parameter('articutool_base_link').value
+        self.imu_link = self.get_parameter('imu_link_frame').value
+        self.tooltip_link = self.get_parameter('tooltip_frame').value
+        self.joint_names = self.get_parameter('joint_names').value
+        urdf_filename = self.get_parameter('urdf_path').value
 
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
