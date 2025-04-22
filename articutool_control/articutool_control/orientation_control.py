@@ -171,12 +171,25 @@ class OrientationControl(Node):
 
         # --- ROS Comms ---
         self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
-        # self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
+        self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
         # self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
         # self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
         # self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
 
         self.get_logger().info("Articutool Orientation Controller Node Started.")
+
+    def feedback_callback(self, msg: QuaternionStamped):
+        """Stores the latest orientation feedback."""
+        if not self.reference_frame:
+            self.reference_frame = msg.header.frame_id
+            self.get_logger().info(f"Received first orientation feedback relative to frame: '{self.reference_frame}'")
+        elif self.reference_frame != msg.header.frame_id:
+            self.get_logger().warn(f"Orientation feedback frame changed from '{self.reference_frame}' to '{msg.header.frame_id}'!")
+            self.reference_frame = msg.header.frame_id
+
+        self.current_imu_orientation_world = R.from_quat([
+            msg.quaternion.x, msg.quaternion.y, msg.quaternion.z, msg.quaternion.w
+        ])
 
     def set_orientation_control_callback(self, request: SetOrientationControl.Request, response: SetOrientationControl.Response):
         """Handles service requests to enable/disable control and set target."""
