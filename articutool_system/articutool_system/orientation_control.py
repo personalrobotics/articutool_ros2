@@ -35,6 +35,14 @@ class OrientationControl(Node):
         super().__init__("orientation_control")
 
         # --- Parameters ---
+        # Control gains
+        p_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Proportional gains [Pitch, Roll]')
+        i_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Integral gains [Pitch, Roll]')
+        d_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Derivative gains [Pitch, Roll]')
+        self.declare_parameter('pid_gains.p', [1.0, 1.0], p_gain_desc)
+        self.declare_parameter('pid_gains.i', [0.1, 0.1], i_gain_desc)
+        self.declare_parameter('pid_gains.d', [0.05, 0.05], d_gain_desc)
+        self.declare_parameter('integral_clamp', 1.0, ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Max absolute value for integral term'))
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
         # self.tip_frame = "tool_tip"
