@@ -21,9 +21,12 @@ from scipy.spatial.transform import Rotation as R
 
 # Import Pinocchio and URDF parser
 import pinocchio as pin
+
+# Standard imports
 import os
 import tempfile
 import subprocess
+from typing import Optional
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -155,6 +158,16 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().fatal(f"Failed to initialize Pinocchio model: {e}", exc_info=True)
             raise e # Prevent node from starting cleanly
+
+        # --- State variables ---
+        self.control_active = False
+        self.target_orientation_world = R.identity()
+        self.current_imu_orientation_world: Optional[R] = None
+        self.current_joint_positions: Optional[np.ndarray] = None
+        self.last_error = np.zeros(3)
+        self.integral_error = np.zeros(3)
+        self.last_time = self.get_clock().now()
+        self.reference_frame = ""
 
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
