@@ -43,6 +43,18 @@ class OrientationControl(Node):
         self.declare_parameter('pid_gains.i', [0.1, 0.1], i_gain_desc)
         self.declare_parameter('pid_gains.d', [0.05, 0.05], d_gain_desc)
         self.declare_parameter('integral_clamp', 1.0, ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Max absolute value for integral term'))
+
+        # --- Node Config ---
+        loop_rate_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Control loop frequency (Hz)')
+        feedback_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for QuaternionStamped orientation feedback (of atool_imu_frame)')
+        command_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for publishing Float64MultiArray velocity commands')
+        joint_state_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for subscribing to Articutool joint states')
+        self.declare_parameter('loop_rate', 50.0, loop_rate_desc)
+        self.declare_parameter('feedback_topic', '/articutool/estimated_orientation', feedback_topic_desc)
+        self.declare_parameter('command_topic', '/articutool/velocity_controller/commands', command_topic_desc)
+        self.declare_parameter('joint_state_topic', '/articutool/joint_states', joint_state_topic_desc)
+
+
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
         # self.tip_frame = "tool_tip"
