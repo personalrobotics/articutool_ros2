@@ -26,6 +26,11 @@ from ament_index_python.packages import get_package_share_directory
 
 
 class OrientationControl(Node):
+    """
+    Controls Articutool's Roll/Pitch joints (J1/J2) to maintain a target
+    orientation for the tool_tip frame, using orientation feedback for the
+    atool_imu_frame and Pinocchio for kinematic calculations. Activated via service.
+    """
     def __init__(self):
         super().__init__("orientation_control")
 
