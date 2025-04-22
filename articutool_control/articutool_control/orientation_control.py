@@ -172,7 +172,7 @@ class OrientationControl(Node):
         # --- ROS Comms ---
         self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
         self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
-        # self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
+        self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
         # self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
         # self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
 
@@ -190,6 +190,21 @@ class OrientationControl(Node):
         self.current_imu_orientation_world = R.from_quat([
             msg.quaternion.x, msg.quaternion.y, msg.quaternion.z, msg.quaternion.w
         ])
+
+    def joint_state_callback(self, msg: JointState):
+        """Stores the latest positions for the controlled joints."""
+        if self.current_joint_positions is None:
+             self.current_joint_positions = np.zeros(len(self.joint_names))
+
+        found_count = 0
+        for i, name in enumerate(msg.name):
+            try:
+                # Find index in our ordered list
+                idx = self.joint_names.index(name)
+                self.current_joint_positions[idx] = msg.position[i]
+                found_count += 1
+            except ValueError:
+                continue
 
     def set_orientation_control_callback(self, request: SetOrientationControl.Request, response: SetOrientationControl.Response):
         """Handles service requests to enable/disable control and set target."""
