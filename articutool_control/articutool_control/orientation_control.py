@@ -171,12 +171,56 @@ class OrientationControl(Node):
 
         # --- ROS Comms ---
         self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
-        self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
-        self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
-        self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
-        self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
+        # self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
+        # self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
+        # self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
+        # self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
 
         self.get_logger().info("Articutool Orientation Controller Node Started.")
+
+    def set_orientation_control_callback(self, request: SetOrientationControl.Request, response: SetOrientationControl.Response):
+        """Handles service requests to enable/disable control and set target."""
+        self.get_logger().info(f"SetOrientationControl Request: enable={request.enable}")
+        if request.enable:
+            try:
+                # Store target as scipy Rotation object
+                self.target_orientation_world = R.from_quat([
+                    request.target_orientation.x, request.target_orientation.y,
+                    request.target_orientation.z, request.target_orientation.w
+                ])
+                # Reset PID state
+                self.integral_error.fill(0.0)
+                self.last_error.fill(0.0)
+                self.last_time = self.get_clock().now()
+                self.control_active = True
+                self.get_logger().info(f"Orientation control ENABLED.")
+                response.success = True
+                response.message = "Control enabled."
+            except Exception as e:
+                self.get_logger().error(f"Error setting target orientation: {e}")
+                response.success = False
+                response.message = f"Error setting target: {e}"
+        else:
+            self.control_active = False
+            self._publish_zero_command()
+            self.get_logger().info("Orientation control DISABLED.")
+            response.success = True
+            response.message = "Control disabled."
+        return response
+
+    def _publish_command(self, joint_velocities: np.ndarray):
+        """Publishes velocity commands, assuming Float64MultiArray."""
+        if len(joint_velocities) != len(self.joint_names):
+            self.get_logger().error(f"Command length mismatch ({len(joint_velocities)}) vs expected ({len(self.joint_names)})")
+            return
+
+        cmd_msg = Float64MultiArray()
+        cmd_msg.data = joint_velocities.tolist()
+        self.cmd_pub.publish(cmd_msg)
+
+    def _publish_zero_command(self):
+        """Helper to send zero velocity commands."""
+        self._publish_command(np.zeros(len(self.joint_names)))
 
 # --- Main Execution ---
 def main(args=None):
