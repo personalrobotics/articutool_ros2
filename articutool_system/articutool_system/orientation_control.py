@@ -22,6 +22,8 @@ from scipy.spatial.transform import Rotation as R
 # Import Pinocchio and URDF parser
 import pinocchio as pin
 import os
+import tempfile
+import subprocess
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -79,12 +81,80 @@ class OrientationControl(Node):
         self.imu_link = self.get_parameter('imu_link_frame').value
         self.tooltip_link = self.get_parameter('tooltip_frame').value
         self.joint_names = self.get_parameter('joint_names').value
-        urdf_filename = self.get_parameter('urdf_path').value
+        xacro_filename = self.get_parameter('urdf_path').value
 
         if len(self.joint_names) != 2:
             raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
         if len(self.Kp) != 2 or len(self.Ki) != 2 or len(self.Kd) != 2:
              raise ValueError("PID gains must be provided as arrays of length 2")
+
+        # --- Pinocchio Setup ---
+        try:
+            if not os.path.exists(xacro_filename):
+                raise FileNotFoundError(f"Xacro file not found at {xacro_filename}")
+
+            self.get_logger().info("Processing Xacro file")
+            try:
+                process = subprocess.run(
+                    ["ros2", "run", "xacro", "xacro", xacro_filename],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                urdf_xml_string = process.stdout
+                self.get_logger().info("XACRO processing successful.")
+            except FileNotFoundError as e:
+                self.get_logger().fatal(
+                    f"Command 'ros2 run xacro ...' failed. Is xacro installed ('ros-{self.get_namespace().split('/')[-1]}-xacro') and ROS 2 sourced properly? Error: {e}"
+                )
+                raise RuntimeError("Failed to find/run xacro command") from e
+            except subprocess.CalledProcessError as e:
+                self.get_logger().fatal(
+                    f"XACRO processing command failed with exit code {e.returncode}."
+                )
+                self.get_logger().error(f"XACRO stderr:\n{e.stderr}")
+                raise RuntimeError("XACRO processing failed") from e
+
+            # Create a temporary file and write the URDF string to it
+            # We use delete=False because Pinocchio needs to open the file by path.
+            # We MUST manually delete it in the finally block.
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".urdf", delete=False
+            ) as temp_urdf_file:
+                temp_urdf_path = temp_urdf_file.name
+                temp_urdf_file.write(urdf_xml_string)
+                # File is flushed and closed automatically when 'with' block exits
+
+            self.get_logger().info(f"Generated temporary URDF file: {temp_urdf_path}")
+
+            # Load the model - assuming the URDF describes the articutool *only*,
+            # potentially attached to a 'world' or its 'base_link' parameter.
+            # If the URDF includes the Jaco arm, we need to build a reduced model.
+            # For now, assume it's just the Articutool relative to its base_link.
+            self.pin_model = pin.buildModelFromUrdf(temp_urdf_path)
+            self.pin_data = self.pin_model.createData()
+            self.get_logger().info(f"Pinocchio model loaded successfully from {temp_urdf_path}")
+
+            # Get frame and joint IDs (handle potential errors)
+            if not self.pin_model.existFrame(self.imu_link): raise ValueError(f"IMU frame '{self.imu_link}' not found in Pinocchio model")
+            if not self.pin_model.existFrame(self.tooltip_link): raise ValueError(f"Tooltip frame '{self.tooltip_link}' not found in Pinocchio model")
+            if not self.pin_model.existJoint(self.joint_names[0]): raise ValueError(f"Joint '{self.joint_names[0]}' not found")
+            if not self.pin_model.existJoint(self.joint_names[1]): raise ValueError(f"Joint '{self.joint_names[1]}' not found")
+
+            self.imu_frame_id = self.pin_model.getFrameId(self.imu_link)
+            self.tooltip_frame_id = self.pin_model.getFrameId(self.tooltip_link)
+            # Assuming the joints in Pinocchio model correspond directly to the names provided
+            # Note: Pinocchio joint indices often start from 1 (0 is universe)
+            self.joint1_id = self.pin_model.getJointId(self.joint_names[0])
+            self.joint2_id = self.pin_model.getJointId(self.joint_names[1])
+            # We need the velocity indices (nv) which correspond to the columns in the Jacobian
+            # Assuming standard revolute joints, velocity index = joint index - 1 (due to universe)
+            self.joint1_vel_idx = self.pin_model.joints[self.joint1_id].idx_v
+            self.joint2_vel_idx = self.pin_model.joints[self.joint2_id].idx_v
+
+        except Exception as e:
+            self.get_logger().fatal(f"Failed to initialize Pinocchio model: {e}", exc_info=True)
+            raise e # Prevent node from starting cleanly
 
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
