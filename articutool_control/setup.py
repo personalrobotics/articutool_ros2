@@ -25,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "send_trajectory_action_client = articutool_control.send_trajectory_action_client:main",
+            "orientation_control_service = articutool_control.orientation_control:main",
         ],
     },
 )
