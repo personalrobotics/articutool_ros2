@@ -233,7 +233,17 @@ class OrientationControl(Node):
 
         try:
             # --- Kinematics (Pinocchio) ---
-            q = self.current_joint_positions
+            # Create full configuration vector
+            q = pin.neutral(self.pin_model)
+
+            # Get configuration vector indices for the actuated joints
+            q_idx_j1 = self.pin_model.joints[self.joint1_id].idx_q
+            q_idx_j2 = self.pin_model.joints[self.joint2_id].idx_q
+
+            # Populate the full configuration vector with current positions
+            q[q_idx_j1] = self.current_joint_positions[0]
+            q[q_idx_j2] = self.current_joint_positions[1]
+
             pin.forwardKinematics(self.pin_model, self.pin_data, q)
             pin.updateFramePlacements(self.pin_model, self.pin_data)
             pin.computeJointJacobians(self.pin_model, self.pin_data, q)
