@@ -92,14 +92,6 @@ def generate_launch_description():
     )
     launch_moveit = LaunchConfiguration("launch_moveit")
 
-    # Declare launch orientation control node argument
-    launch_orientation_control_arg = DeclareLaunchArgument(
-        "launch_orientation_control",
-        default_value="false",
-        description="Launch orientation control node.",
-    )
-    launch_orientation_control = LaunchConfiguration("launch_orientation_control")
-
     # Declare launch rviz argument
     launch_rviz_arg = DeclareLaunchArgument(
         "launch_rviz",
@@ -159,15 +151,6 @@ def generate_launch_description():
         condition=IfCondition(launch_moveit),
     )
 
-    # Launch orientation_control node
-    orientation_control_node = Node(
-        package="articutool_system",
-        executable="orientation_control",
-        name="orientation_control",
-        output="screen",
-        condition=IfCondition(launch_orientation_control),
-    )
-
     return LaunchDescription(
         [
             imu_port_arg,
@@ -179,11 +162,9 @@ def generate_launch_description():
             launch_imu_arg,
             launch_orientation_arg,
             launch_moveit_arg,
-            launch_orientation_control_arg,
             launch_rviz_arg,
             imu_launch,
             orientation_launch,
             moveit_launch,
-            orientation_control_node,
         ]
     )
