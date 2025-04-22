@@ -15,9 +15,14 @@ find_package(trajectory_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
 # Add interfaces here if any are defined in the future
-# rosidl_generate_interfaces(${PROJECT_NAME}
-#   DEPENDENCIES trajectory_msgs builtin_interfaces
-# )
+set(interface_files
+  "srv/SetOrientationControl.srv"
+)
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${interface_files}
+  DEPENDENCIES trajectory_msgs builtin_interfaces
+)
+ament_export_dependencies(rosidl_default_runtime)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

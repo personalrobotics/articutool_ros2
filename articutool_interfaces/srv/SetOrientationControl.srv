@@ -1,0 +1,7 @@
+# Request
+bool enable                       # True to activate/hold, False to deactivate
+geometry_msgs/Quaternion target_orientation  # Target orientation for tool_tip frame relative to world/base frame
+---
+# Response
+bool success                      # True if the request was processed successfully
+string message                    # Optional status message
