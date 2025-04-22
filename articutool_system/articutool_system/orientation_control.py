@@ -169,6 +169,13 @@ class OrientationControl(Node):
         self.last_time = self.get_clock().now()
         self.reference_frame = ""
 
+        # --- ROS Comms ---
+        self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
+        self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
+        self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
+        self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
+        self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
+
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
         # self.tip_frame = "tool_tip"
