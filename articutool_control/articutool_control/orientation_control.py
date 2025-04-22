@@ -141,8 +141,8 @@ class OrientationControl(Node):
             # Get frame and joint IDs (handle potential errors)
             if not self.pin_model.existFrame(self.imu_link): raise ValueError(f"IMU frame '{self.imu_link}' not found in Pinocchio model")
             if not self.pin_model.existFrame(self.tooltip_link): raise ValueError(f"Tooltip frame '{self.tooltip_link}' not found in Pinocchio model")
-            if not self.pin_model.existJoint(self.joint_names[0]): raise ValueError(f"Joint '{self.joint_names[0]}' not found")
-            if not self.pin_model.existJoint(self.joint_names[1]): raise ValueError(f"Joint '{self.joint_names[1]}' not found")
+            # if not self.pin_model.existJoint(self.joint_names[0]): raise ValueError(f"Joint '{self.joint_names[0]}' not found")
+            # if not self.pin_model.existJoint(self.joint_names[1]): raise ValueError(f"Joint '{self.joint_names[1]}' not found")
 
             self.imu_frame_id = self.pin_model.getFrameId(self.imu_link)
             self.tooltip_frame_id = self.pin_model.getFrameId(self.tooltip_link)
