@@ -81,6 +81,11 @@ class OrientationControl(Node):
         self.joint_names = self.get_parameter('joint_names').value
         urdf_filename = self.get_parameter('urdf_path').value
 
+        if len(self.joint_names) != 2:
+            raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
+        if len(self.Kp) != 2 or len(self.Ki) != 2 or len(self.Kd) != 2:
+             raise ValueError("PID gains must be provided as arrays of length 2")
+
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
         # self.tip_frame = "tool_tip"
