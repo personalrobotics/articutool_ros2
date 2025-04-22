@@ -54,6 +54,17 @@ class OrientationControl(Node):
         self.declare_parameter('command_topic', '/articutool/velocity_controller/commands', command_topic_desc)
         self.declare_parameter('joint_state_topic', '/articutool/joint_states', joint_state_topic_desc)
 
+        # --- Model/Kinematics ---
+        urdf_path_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Path to the Articutool URDF/XACRO file')
+        articutool_base_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Base link name of the Articutool model (attaches to arm)')
+        imu_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Name of the link where orientation feedback is measured')
+        tooltip_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Name of the link whose orientation is controlled')
+        joint_names_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY, description='Names of the actuated joints [Pitch, Roll]')
+        self.declare_parameter('urdf_path', '', urdf_path_desc)
+        self.declare_parameter('articutool_base_link', 'atool_handle', articutool_base_link_desc)
+        self.declare_parameter('imu_link_frame', 'atool_imu_frame', imu_link_desc)
+        self.declare_parameter('tooltip_frame', 'tool_tip', tooltip_link_desc)
+        self.declare_parameter('joint_names', ['atool_joint1', 'atool_joint2'], joint_names_desc)
 
         # # Frame names
         # self.imu_frame = "atool_imu_frame"
