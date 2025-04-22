@@ -220,6 +220,12 @@ class OrientationControl(Node):
             self.last_time = now
             return
 
+        if len(self.current_joint_positions) != 2:
+            self.get_logger().error(f"Stored joint positions have incorrect size ({len(self.current_joint_positions)}), expected 2.")
+            self._publish_zero_command()
+            self.last_time = now
+            return
+
         if dt <= 0:
             self.get_logger().warn("Time delta is zero or negative, skipping control step.", throttle_duration_sec=1.0)
             self.last_time = now
