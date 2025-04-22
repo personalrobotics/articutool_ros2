@@ -173,8 +173,8 @@ class OrientationControl(Node):
         self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
         self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
         self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
-        # self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
-        # self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
+        self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
+        self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
 
         self.get_logger().info("Articutool Orientation Controller Node Started.")
 
@@ -205,6 +205,90 @@ class OrientationControl(Node):
                 found_count += 1
             except ValueError:
                 continue
+
+    def control_loop(self):
+        """Calculates and publishes joint velocity commands."""
+        now = self.get_clock().now()
+        dt = (now - self.last_time).nanoseconds / 1e9
+
+        if not self.control_active:
+            return
+
+        if self.current_imu_orientation_world is None or self.current_joint_positions is None:
+            self.get_logger().warn("No current orientation or joint state feedback received yet.", throttle_duration_sec=1.0)
+            self._publish_zero_command()
+            self.last_time = now
+            return
+
+        if dt <= 0:
+            self.get_logger().warn("Time delta is zero or negative, skipping control step.", throttle_duration_sec=1.0)
+            self.last_time = now
+            return
+
+        try:
+            # --- Kinematics (Pinocchio) ---
+            q = self.current_joint_positions
+            pin.forwardKinematics(self.pin_model, self.pin_data, q)
+            pin.updateFramePlacements(self.pin_model, self.pin_data)
+            pin.computeJointJacobians(self.pin_model, self.pin_data, q)
+
+            # Get IMU -> Tooltip transform
+            T_world_imu = self.pin_data.oMf[self.imu_frame_id] # Pose of IMU frame in world (Pinocchio base)
+            T_world_tooltip = self.pin_data.oMf[self.tooltip_frame_id] # Pose of Tooltip frame in world
+
+            # Calculate T_imu_tooltip = T_world_imu.inverse() * T_world_tooltip
+            T_imu_tooltip = T_world_imu.actInv(T_world_tooltip)
+            q_imu_tooltip = R.from_matrix(T_imu_tooltip.rotation)
+
+            # Get Jacobian for tooltip frame (angular part) in world frame
+            # Get Jacobian for velocity expressed in WORLD frame
+            J_tooltip_world = pin.computeFrameJacobian(self.pin_model, self.pin_data, q, self.tooltip_frame_id, pin.ReferenceFrame.WORLD)
+
+            # Extract columns corresponding to our joints (J1, J2) and rows for angular velocity (3,4,5)
+            # Need to map self.joint1_vel_idx and self.joint2_vel_idx to columns
+            # Assumes J1/J2 are the ONLY moving joints in this Pinocchio model!
+            # If model includes base, need to select correct columns. Assuming model has nv=2.
+            if self.pin_model.nv != 2:
+                 self.get_logger().warn_once(f"Pinocchio model nv ({self.pin_model.nv}) != 2. Jacobian slicing might be incorrect.")
+            J_tooltip_angular_w = J_tooltip_world[3:6, :self.pin_model.nv] # Get 3xN angular part (N=num_velocities)
+            # --- End Kinematics ---
+
+
+            # --- Control Logic ---
+            # Estimate current tooltip orientation in world
+            q_current_tooltip = self.current_imu_orientation_world * q_imu_tooltip
+
+            # Calculate error quaternion and axis-angle error vector
+            q_error = self.target_orientation_world * q_current_tooltip.inv()
+            error_vec = q_error.as_rotvec() # 3D error vector in world frame
+
+            # PID -> Desired Angular Velocity in World Frame
+            self.integral_error += error_vec * dt
+            # Anti-windup
+            self.integral_error = np.clip(self.integral_error, -self.integral_max, self.integral_max)
+            derivative = (error_vec - self.last_error) / dt
+            omega_desired_w = self.Kp * error_vec + self.Ki * self.integral_error + self.Kd * derivative
+            self.last_error = error_vec
+
+            # Calculate Target Joint Velocities using Jacobian
+            # omega = J * dq  => dq = J_pinv * omega
+            try:
+                J_pinv = np.linalg.pinv(J_tooltip_angular_w, rcond=1e-4)
+                dq_desired = J_pinv @ omega_desired_w
+            except np.linalg.LinAlgError:
+                self.get_logger().warn("Jacobian pseudo-inverse calculation failed (singularity?). Commanding zero velocity.", throttle_duration_sec=1.0)
+                dq_desired = np.zeros(len(self.joint_names))
+
+
+            # --- Publish Command ---
+            self._publish_command(dq_desired)
+
+        except Exception as e:
+            self.get_logger().error(f"Error in control loop: {e}")
+            self._publish_zero_command() # Stop motors on error
+
+        # Update time for next iteration
+        self.last_time = now
 
     def set_orientation_control_callback(self, request: SetOrientationControl.Request, response: SetOrientationControl.Response):
         """Handles service requests to enable/disable control and set target."""
