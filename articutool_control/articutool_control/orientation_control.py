@@ -156,7 +156,7 @@ class OrientationControl(Node):
             self.joint2_vel_idx = self.pin_model.joints[self.joint2_id].idx_v
 
         except Exception as e:
-            self.get_logger().fatal(f"Failed to initialize Pinocchio model: {e}", exc_info=True)
+            self.get_logger().fatal(f"Failed to initialize Pinocchio model: {e}")
             raise e # Prevent node from starting cleanly
 
         # --- State variables ---
@@ -189,7 +189,7 @@ def main(args=None):
         pass
     except Exception as e:
         # Catch initialization errors or other major issues
-        if node: node.get_logger().fatal(f"Unhandled exception: {e}", exc_info=True)
+        if node: node.get_logger().fatal(f"Unhandled exception: {e}")
         else: print(f"Unhandled exception before node init: {e}")
     finally:
         if node:
