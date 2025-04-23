@@ -283,13 +283,11 @@ class OrientationControl(Node):
         if self.current_joint_positions is None:
             self.current_joint_positions = np.zeros(len(self.joint_names))
 
-        found_count = 0
         for i, name in enumerate(msg.name):
             try:
                 # Find index in our ordered list
                 idx = self.joint_names.index(name)
                 self.current_joint_positions[idx] = msg.position[i]
-                found_count += 1
             except ValueError:
                 continue
 
