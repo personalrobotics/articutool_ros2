@@ -146,6 +146,20 @@ class OrientationControl(Node):
 
             self.imu_frame_id = self.pin_model.getFrameId(self.imu_link)
             self.tooltip_frame_id = self.pin_model.getFrameId(self.tooltip_link)
+
+            # Get joint IDs and velocity indices, and LOG the names being controlled
+            self.joint_ids = []
+            self.joint_vel_indices = []
+            controlled_joint_names_log = []
+            for name in self.joint_names:
+                joint_id = self.pin_model.getJointId(name)
+                self.joint_ids.append(joint_id)
+                self.joint_vel_indices.append(self.pin_model.joints[joint_id].idx_v)
+                controlled_joint_names_log.append(name)
+
+            self.get_logger().info(f"Controlling actuated joints: {controlled_joint_names_log}")
+            self.get_logger().info(f"Corresponding velocity indices: {self.joint_vel_indices}")
+
             # Assuming the joints in Pinocchio model correspond directly to the names provided
             # Note: Pinocchio joint indices often start from 1 (0 is universe)
             self.joint1_id = self.pin_model.getJointId(self.joint_names[0])
