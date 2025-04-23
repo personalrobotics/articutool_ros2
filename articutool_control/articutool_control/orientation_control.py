@@ -36,55 +36,108 @@ class OrientationControl(Node):
     orientation for the tool_tip frame, using orientation feedback for the
     atool_imu_frame and Pinocchio for kinematic calculations. Activated via service.
     """
+
     def __init__(self):
         super().__init__("orientation_control")
 
         # --- Parameters ---
         # --- Control gains ---
-        p_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Proportional gain')
-        i_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Integral gain')
-        d_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Derivative gain')
-        self.declare_parameter('pid_gains.p', 1.0, p_gain_desc)
-        self.declare_parameter('pid_gains.i', 0.1, i_gain_desc)
-        self.declare_parameter('pid_gains.d', 0.05, d_gain_desc)
-        self.declare_parameter('integral_clamp', 1.0, ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Max absolute value for integral term'))
+        p_gain_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE, description="PID Proportional gain"
+        )
+        i_gain_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE, description="PID Integral gain"
+        )
+        d_gain_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE, description="PID Derivative gain"
+        )
+        self.declare_parameter("pid_gains.p", 1.0, p_gain_desc)
+        self.declare_parameter("pid_gains.i", 0.1, i_gain_desc)
+        self.declare_parameter("pid_gains.d", 0.05, d_gain_desc)
+        self.declare_parameter(
+            "integral_clamp",
+            1.0,
+            ParameterDescriptor(
+                type=ParameterType.PARAMETER_DOUBLE,
+                description="Max absolute value for integral term",
+            ),
+        )
 
         # --- Node Config ---
-        loop_rate_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Control loop frequency (Hz)')
-        feedback_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for QuaternionStamped orientation feedback (of atool_imu_frame)')
-        command_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for publishing Float64MultiArray velocity commands')
-        joint_state_topic_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Topic for subscribing to Articutool joint states')
-        self.declare_parameter('loop_rate', 50.0, loop_rate_desc)
-        self.declare_parameter('feedback_topic', '/articutool/estimated_orientation', feedback_topic_desc)
-        self.declare_parameter('command_topic', '/articutool/velocity_controller/commands', command_topic_desc)
-        self.declare_parameter('joint_state_topic', '/articutool/joint_states', joint_state_topic_desc)
+        loop_rate_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE,
+            description="Control loop frequency (Hz)",
+        )
+        feedback_topic_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Topic for QuaternionStamped orientation feedback (of atool_imu_frame)",
+        )
+        command_topic_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Topic for publishing Float64MultiArray velocity commands",
+        )
+        joint_state_topic_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Topic for subscribing to Articutool joint states",
+        )
+        self.declare_parameter("loop_rate", 50.0, loop_rate_desc)
+        self.declare_parameter(
+            "feedback_topic", "/articutool/estimated_orientation", feedback_topic_desc
+        )
+        self.declare_parameter(
+            "command_topic",
+            "/articutool/velocity_controller/commands",
+            command_topic_desc,
+        )
+        self.declare_parameter(
+            "joint_state_topic", "/articutool/joint_states", joint_state_topic_desc
+        )
 
         # --- Model/Kinematics ---
-        urdf_path_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Path to the Articutool URDF/XACRO file')
-        articutool_base_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Base link name of the Articutool model (attaches to arm)')
-        imu_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Name of the link where orientation feedback is measured')
-        tooltip_link_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING, description='Name of the link whose orientation is controlled')
-        joint_names_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY, description='Names of the actuated joints [Pitch, Roll]')
-        self.declare_parameter('urdf_path', '', urdf_path_desc)
-        self.declare_parameter('articutool_base_link', 'atool_handle', articutool_base_link_desc)
-        self.declare_parameter('imu_link_frame', 'atool_imu_frame', imu_link_desc)
-        self.declare_parameter('tooltip_frame', 'tool_tip', tooltip_link_desc)
-        self.declare_parameter('joint_names', ['atool_joint1', 'atool_joint2'], joint_names_desc)
+        urdf_path_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Path to the Articutool URDF/XACRO file",
+        )
+        articutool_base_link_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Base link name of the Articutool model (attaches to arm)",
+        )
+        imu_link_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Name of the link where orientation feedback is measured",
+        )
+        tooltip_link_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING,
+            description="Name of the link whose orientation is controlled",
+        )
+        joint_names_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_STRING_ARRAY,
+            description="Names of the actuated joints [Pitch, Roll]",
+        )
+        self.declare_parameter("urdf_path", "", urdf_path_desc)
+        self.declare_parameter(
+            "articutool_base_link", "atool_handle", articutool_base_link_desc
+        )
+        self.declare_parameter("imu_link_frame", "atool_imu_frame", imu_link_desc)
+        self.declare_parameter("tooltip_frame", "tool_tip", tooltip_link_desc)
+        self.declare_parameter(
+            "joint_names", ["atool_joint1", "atool_joint2"], joint_names_desc
+        )
 
         # --- Get Parameters ---
-        self.Kp = self.get_parameter('pid_gains.p').value
-        self.Ki = self.get_parameter('pid_gains.i').value
-        self.Kd = self.get_parameter('pid_gains.d').value
-        self.integral_max = self.get_parameter('integral_clamp').value
-        self.rate = self.get_parameter('loop_rate').value
-        self.feedback_topic = self.get_parameter('feedback_topic').value
-        self.command_topic = self.get_parameter('command_topic').value
-        self.joint_state_topic = self.get_parameter('joint_state_topic').value
-        self.articutool_base_link = self.get_parameter('articutool_base_link').value
-        self.imu_link = self.get_parameter('imu_link_frame').value
-        self.tooltip_link = self.get_parameter('tooltip_frame').value
-        self.joint_names = self.get_parameter('joint_names').value
-        xacro_filename = self.get_parameter('urdf_path').value
+        self.Kp = self.get_parameter("pid_gains.p").value
+        self.Ki = self.get_parameter("pid_gains.i").value
+        self.Kd = self.get_parameter("pid_gains.d").value
+        self.integral_max = self.get_parameter("integral_clamp").value
+        self.rate = self.get_parameter("loop_rate").value
+        self.feedback_topic = self.get_parameter("feedback_topic").value
+        self.command_topic = self.get_parameter("command_topic").value
+        self.joint_state_topic = self.get_parameter("joint_state_topic").value
+        self.articutool_base_link = self.get_parameter("articutool_base_link").value
+        self.imu_link = self.get_parameter("imu_link_frame").value
+        self.tooltip_link = self.get_parameter("tooltip_frame").value
+        self.joint_names = self.get_parameter("joint_names").value
+        xacro_filename = self.get_parameter("urdf_path").value
 
         if len(self.joint_names) != 2:
             raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
@@ -134,13 +187,19 @@ class OrientationControl(Node):
             # For now, assume it's just the Articutool relative to its base_link.
             self.pin_model = pin.buildModelFromUrdf(temp_urdf_path)
             self.pin_data = self.pin_model.createData()
-            self.get_logger().info(f"Pinocchio model loaded successfully from {temp_urdf_path}")
+            self.get_logger().info(
+                f"Pinocchio model loaded successfully from {temp_urdf_path}"
+            )
 
             # Get frame and joint IDs (handle potential errors)
-            if not self.pin_model.existFrame(self.imu_link): raise ValueError(f"IMU frame '{self.imu_link}' not found in Pinocchio model")
-            if not self.pin_model.existFrame(self.tooltip_link): raise ValueError(f"Tooltip frame '{self.tooltip_link}' not found in Pinocchio model")
-            # if not self.pin_model.existJoint(self.joint_names[0]): raise ValueError(f"Joint '{self.joint_names[0]}' not found")
-            # if not self.pin_model.existJoint(self.joint_names[1]): raise ValueError(f"Joint '{self.joint_names[1]}' not found")
+            if not self.pin_model.existFrame(self.imu_link):
+                raise ValueError(
+                    f"IMU frame '{self.imu_link}' not found in Pinocchio model"
+                )
+            if not self.pin_model.existFrame(self.tooltip_link):
+                raise ValueError(
+                    f"Tooltip frame '{self.tooltip_link}' not found in Pinocchio model"
+                )
 
             self.imu_frame_id = self.pin_model.getFrameId(self.imu_link)
             self.tooltip_frame_id = self.pin_model.getFrameId(self.tooltip_link)
@@ -155,8 +214,12 @@ class OrientationControl(Node):
                 self.joint_vel_indices.append(self.pin_model.joints[joint_id].idx_v)
                 controlled_joint_names_log.append(name)
 
-            self.get_logger().info(f"Controlling actuated joints: {controlled_joint_names_log}")
-            self.get_logger().info(f"Corresponding velocity indices: {self.joint_vel_indices}")
+            self.get_logger().info(
+                f"Controlling actuated joints: {controlled_joint_names_log}"
+            )
+            self.get_logger().info(
+                f"Corresponding velocity indices: {self.joint_vel_indices}"
+            )
 
             # Assuming the joints in Pinocchio model correspond directly to the names provided
             # Note: Pinocchio joint indices often start from 1 (0 is universe)
@@ -169,7 +232,7 @@ class OrientationControl(Node):
 
         except Exception as e:
             self.get_logger().fatal(f"Failed to initialize Pinocchio model: {e}")
-            raise e # Prevent node from starting cleanly
+            raise e  # Prevent node from starting cleanly
 
         # --- State variables ---
         self.control_active = False
@@ -182,9 +245,17 @@ class OrientationControl(Node):
         self.reference_frame = ""
 
         # --- ROS Comms ---
-        self.srv = self.create_service(SetOrientationControl, '/articutool/set_orientation_control', self.set_orientation_control_callback)
-        self.feedback_sub = self.create_subscription(QuaternionStamped, self.feedback_topic, self.feedback_callback, 1) # QoS=1 for latest
-        self.joint_state_sub = self.create_subscription(JointState, self.joint_state_topic, self.joint_state_callback, 10)
+        self.srv = self.create_service(
+            SetOrientationControl,
+            "/articutool/set_orientation_control",
+            self.set_orientation_control_callback,
+        )
+        self.feedback_sub = self.create_subscription(
+            QuaternionStamped, self.feedback_topic, self.feedback_callback, 1
+        )  # QoS=1 for latest
+        self.joint_state_sub = self.create_subscription(
+            JointState, self.joint_state_topic, self.joint_state_callback, 10
+        )
         self.cmd_pub = self.create_publisher(Float64MultiArray, self.command_topic, 10)
         self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
 
@@ -194,19 +265,23 @@ class OrientationControl(Node):
         """Stores the latest orientation feedback."""
         if not self.reference_frame:
             self.reference_frame = msg.header.frame_id
-            self.get_logger().info(f"Received first orientation feedback relative to frame: '{self.reference_frame}'")
+            self.get_logger().info(
+                f"Received first orientation feedback relative to frame: '{self.reference_frame}'"
+            )
         elif self.reference_frame != msg.header.frame_id:
-            self.get_logger().warn(f"Orientation feedback frame changed from '{self.reference_frame}' to '{msg.header.frame_id}'!")
+            self.get_logger().warn(
+                f"Orientation feedback frame changed from '{self.reference_frame}' to '{msg.header.frame_id}'!"
+            )
             self.reference_frame = msg.header.frame_id
 
-        self.current_imu_orientation_world = R.from_quat([
-            msg.quaternion.x, msg.quaternion.y, msg.quaternion.z, msg.quaternion.w
-        ])
+        self.current_imu_orientation_world = R.from_quat(
+            [msg.quaternion.x, msg.quaternion.y, msg.quaternion.z, msg.quaternion.w]
+        )
 
     def joint_state_callback(self, msg: JointState):
         """Stores the latest positions for the controlled joints."""
         if self.current_joint_positions is None:
-             self.current_joint_positions = np.zeros(len(self.joint_names))
+            self.current_joint_positions = np.zeros(len(self.joint_names))
 
         found_count = 0
         for i, name in enumerate(msg.name):
@@ -226,20 +301,31 @@ class OrientationControl(Node):
         if not self.control_active:
             return
 
-        if self.current_imu_orientation_world is None or self.current_joint_positions is None:
-            self.get_logger().warn("No current orientation or joint state feedback received yet.", throttle_duration_sec=1.0)
+        if (
+            self.current_imu_orientation_world is None
+            or self.current_joint_positions is None
+        ):
+            self.get_logger().warn(
+                "No current orientation or joint state feedback received yet.",
+                throttle_duration_sec=1.0,
+            )
             self._publish_zero_command()
             self.last_time = now
             return
 
         if len(self.current_joint_positions) != 2:
-            self.get_logger().error(f"Stored joint positions have incorrect size ({len(self.current_joint_positions)}), expected 2.")
+            self.get_logger().error(
+                f"Stored joint positions have incorrect size ({len(self.current_joint_positions)}), expected 2."
+            )
             self._publish_zero_command()
             self.last_time = now
             return
 
         if dt <= 0:
-            self.get_logger().warn("Time delta is zero or negative, skipping control step.", throttle_duration_sec=1.0)
+            self.get_logger().warn(
+                "Time delta is zero or negative, skipping control step.",
+                throttle_duration_sec=1.0,
+            )
             self.last_time = now
             return
 
@@ -261,8 +347,12 @@ class OrientationControl(Node):
             pin.computeJointJacobians(self.pin_model, self.pin_data, q)
 
             # Get IMU -> Tooltip transform
-            T_world_imu = self.pin_data.oMf[self.imu_frame_id] # Pose of IMU frame in world (Pinocchio base)
-            T_world_tooltip = self.pin_data.oMf[self.tooltip_frame_id] # Pose of Tooltip frame in world
+            T_world_imu = self.pin_data.oMf[
+                self.imu_frame_id
+            ]  # Pose of IMU frame in world (Pinocchio base)
+            T_world_tooltip = self.pin_data.oMf[
+                self.tooltip_frame_id
+            ]  # Pose of Tooltip frame in world
 
             # Calculate T_imu_tooltip = T_world_imu.inverse() * T_world_tooltip
             T_imu_tooltip = T_world_imu.actInv(T_world_tooltip)
@@ -270,20 +360,33 @@ class OrientationControl(Node):
 
             # Get Jacobian for tooltip frame (angular part) in world frame
             # Get Jacobian for velocity expressed in WORLD frame
-            J_tooltip_world = pin.computeFrameJacobian(self.pin_model, self.pin_data, q, self.tooltip_frame_id, pin.ReferenceFrame.WORLD)
+            J_tooltip_world = pin.computeFrameJacobian(
+                self.pin_model,
+                self.pin_data,
+                q,
+                self.tooltip_frame_id,
+                pin.ReferenceFrame.WORLD,
+            )
             # Extract angular rows (3, 4, 5) and columns corresponding to J1, J2 velocities
             try:
                 # Use stored velocity indices
-                J_tooltip_angular_w = J_tooltip_world[3:6, [self.joint1_vel_idx, self.joint2_vel_idx]]
+                J_tooltip_angular_w = J_tooltip_world[
+                    3:6, [self.joint1_vel_idx, self.joint2_vel_idx]
+                ]
                 if J_tooltip_angular_w.shape != (3, 2):
-                     self.get_logger().error(f"Jacobian slice has unexpected shape {J_tooltip_angular_w.shape}, expected (3, 2). Check joint velocity indices and URDF model.", throttle_duration_sec=5.0)
-                     return self._handle_failure("Jacobian shape error") # Use helper
+                    self.get_logger().error(
+                        f"Jacobian slice has unexpected shape {J_tooltip_angular_w.shape}, expected (3, 2). Check joint velocity indices and URDF model.",
+                        throttle_duration_sec=5.0,
+                    )
+                    return self._handle_failure("Jacobian shape error")  # Use helper
 
             except IndexError as e:
-                 self.get_logger().error(f"Error slicing Jacobian with indices {self.joint1_vel_idx}, {self.joint2_vel_idx} from shape {J_tooltip_world_full.shape}. Likely invalid idx_v or model issue. Error: {e}", exc_info=True)
-                 return self._handle_failure("Jacobian slicing error")
+                self.get_logger().error(
+                    f"Error slicing Jacobian with indices {self.joint1_vel_idx}, {self.joint2_vel_idx} from shape {J_tooltip_world_full.shape}. Likely invalid idx_v or model issue. Error: {e}",
+                    exc_info=True,
+                )
+                return self._handle_failure("Jacobian slicing error")
             # --- End Kinematics ---
-
 
             # --- Control Logic ---
             # Estimate current tooltip orientation in world
@@ -291,14 +394,20 @@ class OrientationControl(Node):
 
             # Calculate error quaternion and axis-angle error vector
             q_error = self.target_orientation_world * q_current_tooltip.inv()
-            error_vec = q_error.as_rotvec() # 3D error vector in world frame
+            error_vec = q_error.as_rotvec()  # 3D error vector in world frame
 
             # PID -> Desired Angular Velocity in World Frame
             self.integral_error += error_vec * dt
             # Anti-windup
-            self.integral_error = np.clip(self.integral_error, -self.integral_max, self.integral_max)
+            self.integral_error = np.clip(
+                self.integral_error, -self.integral_max, self.integral_max
+            )
             derivative = (error_vec - self.last_error) / dt
-            omega_desired_w = self.Kp * error_vec + self.Ki * self.integral_error + self.Kd * derivative
+            omega_desired_w = (
+                self.Kp * error_vec
+                + self.Ki * self.integral_error
+                + self.Kd * derivative
+            )
             self.last_error = error_vec
 
             # Calculate Target Joint Velocities using Jacobian
@@ -307,30 +416,42 @@ class OrientationControl(Node):
                 J_pinv = np.linalg.pinv(J_tooltip_angular_w, rcond=1e-4)
                 dq_desired = J_pinv @ omega_desired_w
             except np.linalg.LinAlgError:
-                self.get_logger().warn("Jacobian pseudo-inverse calculation failed (singularity?). Commanding zero velocity.", throttle_duration_sec=1.0)
+                self.get_logger().warn(
+                    "Jacobian pseudo-inverse calculation failed (singularity?). Commanding zero velocity.",
+                    throttle_duration_sec=1.0,
+                )
                 dq_desired = np.zeros(len(self.joint_names))
-
 
             # --- Publish Command ---
             self._publish_command(dq_desired)
 
         except Exception as e:
             self.get_logger().error(f"Error in control loop: {e}")
-            self._publish_zero_command() # Stop motors on error
+            self._publish_zero_command()  # Stop motors on error
 
         # Update time for next iteration
         self.last_time = now
 
-    def set_orientation_control_callback(self, request: SetOrientationControl.Request, response: SetOrientationControl.Response):
+    def set_orientation_control_callback(
+        self,
+        request: SetOrientationControl.Request,
+        response: SetOrientationControl.Response,
+    ):
         """Handles service requests to enable/disable control and set target."""
-        self.get_logger().info(f"SetOrientationControl Request: enable={request.enable}")
+        self.get_logger().info(
+            f"SetOrientationControl Request: enable={request.enable}"
+        )
         if request.enable:
             try:
                 # Store target as scipy Rotation object
-                self.target_orientation_world = R.from_quat([
-                    request.target_orientation.x, request.target_orientation.y,
-                    request.target_orientation.z, request.target_orientation.w
-                ])
+                self.target_orientation_world = R.from_quat(
+                    [
+                        request.target_orientation.x,
+                        request.target_orientation.y,
+                        request.target_orientation.z,
+                        request.target_orientation.w,
+                    ]
+                )
                 # Reset PID state
                 self.integral_error.fill(0.0)
                 self.last_error.fill(0.0)
@@ -354,7 +475,9 @@ class OrientationControl(Node):
     def _publish_command(self, joint_velocities: np.ndarray):
         """Publishes velocity commands, assuming Float64MultiArray."""
         if len(joint_velocities) != len(self.joint_names):
-            self.get_logger().error(f"Command length mismatch ({len(joint_velocities)}) vs expected ({len(self.joint_names)})")
+            self.get_logger().error(
+                f"Command length mismatch ({len(joint_velocities)}) vs expected ({len(self.joint_names)})"
+            )
             return
 
         cmd_msg = Float64MultiArray()
@@ -364,6 +487,7 @@ class OrientationControl(Node):
     def _publish_zero_command(self):
         """Helper to send zero velocity commands."""
         self._publish_command(np.zeros(len(self.joint_names)))
+
 
 # --- Main Execution ---
 def main(args=None):
@@ -376,13 +500,16 @@ def main(args=None):
         pass
     except Exception as e:
         # Catch initialization errors or other major issues
-        if node: node.get_logger().fatal(f"Unhandled exception: {e}")
-        else: print(f"Unhandled exception before node init: {e}")
+        if node:
+            node.get_logger().fatal(f"Unhandled exception: {e}")
+        else:
+            print(f"Unhandled exception before node init: {e}")
     finally:
         if node:
             node.destroy_node()
         if rclpy.ok():
-             rclpy.shutdown()
+            rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -4,7 +4,11 @@
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression, PathJoinSubstitution
+from launch.substitutions import (
+    LaunchConfiguration,
+    PythonExpression,
+    PathJoinSubstitution,
+)
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
@@ -154,30 +158,32 @@ def generate_launch_description():
     # The controller needs the URDF for Pinocchio. Find the description package.
     articutool_description_pkg = get_package_share_directory("articutool_description")
     # Assuming the primary standalone xacro
-    articutool_urdf_xacro_path = PathJoinSubstitution([
-        articutool_description_pkg, "urdf", "articutool_standalone.xacro"
-    ])
+    articutool_urdf_xacro_path = PathJoinSubstitution(
+        [articutool_description_pkg, "urdf", "articutool_standalone.xacro"]
+    )
 
     orientation_control_node = Node(
         package="articutool_control",
         executable="orientation_control_service",
         name="orientation_control",
         output="screen",
-        parameters=[{
-            "urdf_path": articutool_urdf_xacro_path,
-            "loop_rate": 50.0,
-            "joint_names": ["atool_joint1", "atool_joint2"],
-            "imu_link_frame": "atool_imu_frame",
-            "tooltip_frame": "tool_tip",
-            "articutool_base_link": "atool_handle",
-            "feedback_topic": "/articutool/estimated_orientation",
-            "command_topic": "/articutool/velocity_controller/commands",
-            "joint_state_topic": "/articutool/joint_states",
-            "pid_gains.p": 1.5,
-            "pid_gains.i": 0.2,
-            "pid_gains.d": 0.1,
-            "integral_clamp": 1.0,
-        }],
+        parameters=[
+            {
+                "urdf_path": articutool_urdf_xacro_path,
+                "loop_rate": 50.0,
+                "joint_names": ["atool_joint1", "atool_joint2"],
+                "imu_link_frame": "atool_imu_frame",
+                "tooltip_frame": "tool_tip",
+                "articutool_base_link": "atool_handle",
+                "feedback_topic": "/articutool/estimated_orientation",
+                "command_topic": "/articutool/velocity_controller/commands",
+                "joint_state_topic": "/articutool/joint_states",
+                "pid_gains.p": 1.5,
+                "pid_gains.i": 0.2,
+                "pid_gains.d": 0.1,
+                "integral_clamp": 1.0,
+            }
+        ],
         arguments=["--ros-args", "--log-level", log_level],
         condition=IfCondition(launch_moveit),
     )
