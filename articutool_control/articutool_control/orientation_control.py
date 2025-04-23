@@ -365,26 +365,10 @@ class OrientationControl(Node):
                 self.tooltip_frame_id,
                 pin.ReferenceFrame.WORLD,
             )
-            # Extract angular rows (3, 4, 5) and columns corresponding to J1, J2 velocities
-            try:
-                # Use stored velocity indices
-                J_tooltip_angular_w = J_tooltip_world[
-                    3:6, [self.joint1_vel_idx, self.joint2_vel_idx]
-                ]
-                if J_tooltip_angular_w.shape != (3, 2):
-                    self.get_logger().error(
-                        f"Jacobian slice has unexpected shape {J_tooltip_angular_w.shape}, expected (3, 2). Check joint velocity indices and URDF model.",
-                        throttle_duration_sec=5.0,
-                    )
-                    return self._handle_failure("Jacobian shape error")  # Use helper
-
-            except IndexError as e:
-                self.get_logger().error(
-                    f"Error slicing Jacobian with indices {self.joint1_vel_idx}, {self.joint2_vel_idx} from shape {J_tooltip_world_full.shape}. Likely invalid idx_v or model issue. Error: {e}",
-                    exc_info=True,
-                )
-                return self._handle_failure("Jacobian slicing error")
-            # --- End Kinematics ---
+            # Use stored velocity indices
+            J_tooltip_angular_w = J_tooltip_world[
+                3:6, [self.joint1_vel_idx, self.joint2_vel_idx]
+            ]
 
             # --- Control Logic ---
             # Estimate current tooltip orientation in world
