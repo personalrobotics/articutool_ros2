@@ -265,7 +265,7 @@ class OrientationControl(Node):
             # Assumes J1/J2 are the ONLY moving joints in this Pinocchio model!
             # If model includes base, need to select correct columns. Assuming model has nv=2.
             if self.pin_model.nv != 2:
-                 self.get_logger().warn_once(f"Pinocchio model nv ({self.pin_model.nv}) != 2. Jacobian slicing might be incorrect.")
+                 self.get_logger().warn(f"Pinocchio model nv ({self.pin_model.nv}) != 2. Jacobian slicing might be incorrect.")
             J_tooltip_angular_w = J_tooltip_world[3:6, :self.pin_model.nv] # Get 3xN angular part (N=num_velocities)
             # --- End Kinematics ---
 
