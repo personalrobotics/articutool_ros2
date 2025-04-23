@@ -356,47 +356,50 @@ class OrientationControl(Node):
             T_imu_tooltip = T_world_imu.actInv(T_world_tooltip)
             q_imu_tooltip = R.from_matrix(T_imu_tooltip.rotation)
 
-            # Get Jacobian for tooltip frame (angular part) in world frame
-            # Get Jacobian for velocity expressed in WORLD frame
-            J_tooltip_world = pin.computeFrameJacobian(
+            # --- Calculate Current Tooltip Orientation in World ---
+            R_current_tooltip_w = self.current_imu_orientation_world * q_imu_tooltip
+
+            # --- Calculate Jacobian in LOCAL Frame ---
+            # Computes Jacobian mapping joint velocities to spatial velocity
+            J_tooltip_local_full = pin.computeFrameJacobian(
                 self.pin_model,
                 self.pin_data,
                 q,
                 self.tooltip_frame_id,
-                pin.ReferenceFrame.WORLD,
+                pin.ReferenceFrame.LOCAL
             )
             # Use stored velocity indices
-            J_tooltip_angular_w = J_tooltip_world[
+            J_tooltip_angular_l = J_tooltip_local_full[
                 3:6, [self.joint1_vel_idx, self.joint2_vel_idx]
             ]
 
             # --- Control Logic ---
-            # Estimate current tooltip orientation in world
-            q_current_tooltip = self.current_imu_orientation_world * q_imu_tooltip
-
-            # Calculate error quaternion and axis-angle error vector
-            q_error = self.target_orientation_world * q_current_tooltip.inv()
-            error_vec = q_error.as_rotvec()  # 3D error vector in world frame
+            # Calculate world orientation error
+            q_error_w = self.target_orientation_world * R_current_tooltip_w.inv()
+            error_vec_w = q_error_w.as_rotvec()
 
             # PID -> Desired Angular Velocity in World Frame
-            self.integral_error += error_vec * dt
+            self.integral_error += error_vec_w * dt
             # Anti-windup
             self.integral_error = np.clip(
                 self.integral_error, -self.integral_max, self.integral_max
             )
-            derivative = (error_vec - self.last_error) / dt
+            derivative = (error_vec_w - self.last_error) / dt
             omega_desired_w = (
-                self.Kp * error_vec
+                self.Kp * error_vec_w
                 + self.Ki * self.integral_error
                 + self.Kd * derivative
             )
-            self.last_error = error_vec
+            self.last_error = error_vec_w
 
-            # Calculate Target Joint Velocities using Jacobian
-            # omega = J * dq  => dq = J_pinv * omega
+            # --- Transform desired velocity to local tooltip frame ---
+            omega_desired_l = R_current_tooltip_w.inv().apply(omega_desired_w)
+
+            # Calculate Target Joint Velocities using local Jacobian
+            # omega = J * dq  => dq = J_local_pinv * omega_local
             try:
-                J_pinv = np.linalg.pinv(J_tooltip_angular_w, rcond=1e-4)
-                dq_desired = J_pinv @ omega_desired_w
+                J_local_pinv = np.linalg.pinv(J_tooltip_angular_l, rcond=1e-4)
+                dq_desired = J_local_pinv @ omega_desired_l
             except np.linalg.LinAlgError:
                 self.get_logger().warn(
                     "Jacobian pseudo-inverse calculation failed (singularity?). Commanding zero velocity.",
