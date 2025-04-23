@@ -41,12 +41,12 @@ class OrientationControl(Node):
 
         # --- Parameters ---
         # --- Control gains ---
-        p_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Proportional gains [Pitch, Roll]')
-        i_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Integral gains [Pitch, Roll]')
-        d_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY, description='PID Derivative gains [Pitch, Roll]')
-        self.declare_parameter('pid_gains.p', [1.0, 1.0], p_gain_desc)
-        self.declare_parameter('pid_gains.i', [0.1, 0.1], i_gain_desc)
-        self.declare_parameter('pid_gains.d', [0.05, 0.05], d_gain_desc)
+        p_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Proportional gain')
+        i_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Integral gain')
+        d_gain_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='PID Derivative gain')
+        self.declare_parameter('pid_gains.p', 1.0, p_gain_desc)
+        self.declare_parameter('pid_gains.i', 0.1, i_gain_desc)
+        self.declare_parameter('pid_gains.d', 0.05, d_gain_desc)
         self.declare_parameter('integral_clamp', 1.0, ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE, description='Max absolute value for integral term'))
 
         # --- Node Config ---
@@ -72,9 +72,9 @@ class OrientationControl(Node):
         self.declare_parameter('joint_names', ['atool_joint1', 'atool_joint2'], joint_names_desc)
 
         # --- Get Parameters ---
-        self.Kp = np.array(self.get_parameter('pid_gains.p').value)
-        self.Ki = np.array(self.get_parameter('pid_gains.i').value)
-        self.Kd = np.array(self.get_parameter('pid_gains.d').value)
+        self.Kp = self.get_parameter('pid_gains.p').value
+        self.Ki = self.get_parameter('pid_gains.i').value
+        self.Kd = self.get_parameter('pid_gains.d').value
         self.integral_max = self.get_parameter('integral_clamp').value
         self.rate = self.get_parameter('loop_rate').value
         self.feedback_topic = self.get_parameter('feedback_topic').value
@@ -88,8 +88,6 @@ class OrientationControl(Node):
 
         if len(self.joint_names) != 2:
             raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
-        if len(self.Kp) != 2 or len(self.Ki) != 2 or len(self.Kd) != 2:
-             raise ValueError("PID gains must be provided as arrays of length 2")
 
         # --- Pinocchio Setup ---
         try:
@@ -273,14 +271,17 @@ class OrientationControl(Node):
             # Get Jacobian for tooltip frame (angular part) in world frame
             # Get Jacobian for velocity expressed in WORLD frame
             J_tooltip_world = pin.computeFrameJacobian(self.pin_model, self.pin_data, q, self.tooltip_frame_id, pin.ReferenceFrame.WORLD)
+            # Extract angular rows (3, 4, 5) and columns corresponding to J1, J2 velocities
+            try:
+                # Use stored velocity indices
+                J_tooltip_angular_w = J_tooltip_world[3:6, [self.joint1_vel_idx, self.joint2_vel_idx]]
+                if J_tooltip_angular_w.shape != (3, 2):
+                     self.get_logger().error(f"Jacobian slice has unexpected shape {J_tooltip_angular_w.shape}, expected (3, 2). Check joint velocity indices and URDF model.", throttle_duration_sec=5.0)
+                     return self._handle_failure("Jacobian shape error") # Use helper
 
-            # Extract columns corresponding to our joints (J1, J2) and rows for angular velocity (3,4,5)
-            # Need to map self.joint1_vel_idx and self.joint2_vel_idx to columns
-            # Assumes J1/J2 are the ONLY moving joints in this Pinocchio model!
-            # If model includes base, need to select correct columns. Assuming model has nv=2.
-            if self.pin_model.nv != 2:
-                 self.get_logger().warn(f"Pinocchio model nv ({self.pin_model.nv}) != 2. Jacobian slicing might be incorrect.")
-            J_tooltip_angular_w = J_tooltip_world[3:6, :self.pin_model.nv] # Get 3xN angular part (N=num_velocities)
+            except IndexError as e:
+                 self.get_logger().error(f"Error slicing Jacobian with indices {self.joint1_vel_idx}, {self.joint2_vel_idx} from shape {J_tooltip_world_full.shape}. Likely invalid idx_v or model issue. Error: {e}", exc_info=True)
+                 return self._handle_failure("Jacobian slicing error")
             # --- End Kinematics ---
 
 
