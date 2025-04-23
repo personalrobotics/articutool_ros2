@@ -188,7 +188,7 @@ class OrientationControl(Node):
             self.pin_model = pin.buildModelFromUrdf(temp_urdf_path)
             self.pin_data = self.pin_model.createData()
             self.get_logger().info(
-                f"Pinocchio model loaded successfully from {temp_urdf_path}"
+                f"Pinocchio model loaded successfully: \n{self.pin_model}"
             )
 
             # Get frame and joint IDs (handle potential errors)
