@@ -17,6 +17,7 @@ from articutool_interfaces.srv import SetOrientationControl
 
 # Import math libraries
 import numpy as np
+import math
 from scipy.spatial.transform import Rotation as R
 
 # Import Pinocchio and URDF parser
@@ -124,6 +125,36 @@ class OrientationControl(Node):
             "joint_names", ["atool_joint1", "atool_joint2"], joint_names_desc
         )
 
+        # --- Joint Limit Avoidance Parameters ---
+        joint_limit_lower_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE_ARRAY,
+            description="Lower position limits for controlled joints (rad)",
+        )
+        joint_limit_upper_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE_ARRAY,
+            description="Upper position limits for controlled joints (rad)",
+        )
+        joint_limit_threshold_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE,
+            description="Distance from limit to start dampening velocity (rad)",
+        )
+        joint_limit_dampening_factor_desc = ParameterDescriptor(
+            type=ParameterType.PARAMETER_DOUBLE,
+            description="Exponent for velocity dampening (higher = more aggressive)",
+        )
+        self.declare_parameter(
+            "joint_limits.lower", [-math.pi / 2, -math.pi / 2], joint_limit_lower_desc
+        )
+        self.declare_parameter(
+            "joint_limits.upper", [math.pi / 2, math.pi / 2], joint_limit_upper_desc
+        )
+        self.declare_parameter(
+            "joint_limits.threshold", 0.1, joint_limit_threshold_desc # e.g., ~6 degrees
+        )
+        self.declare_parameter(
+            "joint_limits.dampening_factor", 1.0, joint_limit_dampening_factor_desc
+        )
+
         # --- Get Parameters ---
         self.Kp = self.get_parameter("pid_gains.p").value
         self.Ki = self.get_parameter("pid_gains.i").value
@@ -138,6 +169,10 @@ class OrientationControl(Node):
         self.tooltip_link = self.get_parameter("tooltip_frame").value
         self.joint_names = self.get_parameter("joint_names").value
         xacro_filename = self.get_parameter("urdf_path").value
+        self.joint_limits_lower = np.array(self.get_parameter("joint_limits.lower").value)
+        self.joint_limits_upper = np.array(self.get_parameter("joint_limits.upper").value)
+        self.joint_limit_threshold = self.get_parameter("joint_limits.threshold").value
+        self.joint_limit_dampening_factor = self.get_parameter("joint_limits.dampening_factor").value
 
         if len(self.joint_names) != 2:
             raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
@@ -407,8 +442,13 @@ class OrientationControl(Node):
                 )
                 dq_desired = np.zeros(len(self.joint_names))
 
+            # Dampen the desired velocities if near limits
+            dq_dampened = self._dampen_velocities_near_limits(
+                self.current_joint_positions, dq_desired
+            )
+
             # --- Publish Command ---
-            self._publish_command(dq_desired)
+            self._publish_command(dq_dampened)
 
         except Exception as e:
             self.get_logger().error(f"Error in control loop: {e}")
@@ -416,6 +456,49 @@ class OrientationControl(Node):
 
         # Update time for next iteration
         self.last_time = now
+
+    def _dampen_velocities_near_limits(self, current_q: np.ndarray, desired_dq: np.ndarray) -> np.ndarray:
+        """
+        Dampens desired joint velocities if moving towards a limit and within threshold.
+
+        Args:
+            current_q: Current joint positions (numpy array).
+            desired_dq: Desired joint velocities (numpy array).
+
+        Returns:
+            Dampened joint velocities (numpy array).
+        """
+        dampened_dq = np.copy(desired_dq)
+        epsilon = 1e-6
+
+        for i in range(len(current_q)):
+            q_i = current_q[i]
+            dq_i = desired_dq[i]
+            lower_limit = self.joint_limits_lower[i]
+            upper_limit = self.joint_limits_upper[i]
+
+            # Check lower limit
+            if dq_i < 0: # Moving towards lower limit
+                distance_to_lower = q_i - lower_limit
+                if distance_to_lower < self.joint_limit_threshold:
+                    # Calculate scaling factor (0 at limit, 1 at threshold)
+                    # Clamp distance to be non-negative before division
+                    scale = max(0.0, distance_to_lower) / (self.joint_limit_threshold + epsilon)
+                    # Apply exponential dampening (ensure scale is [0, 1])
+                    scale = np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    dampened_dq[i] = dq_i * scale
+
+            # Check upper limit
+            elif dq_i > 0: # Moving towards upper limit
+                distance_to_upper = upper_limit - q_i
+                if distance_to_upper < self.joint_limit_threshold:
+                    # Calculate scaling factor (0 at limit, 1 at threshold)
+                    scale = max(0.0, distance_to_upper) / (self.joint_limit_threshold + epsilon)
+                     # Apply exponential dampening (ensure scale is [0, 1])
+                    scale = np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    dampened_dq[i] = dq_i * scale
+
+        return dampened_dq
 
     def set_orientation_control_callback(
         self,
