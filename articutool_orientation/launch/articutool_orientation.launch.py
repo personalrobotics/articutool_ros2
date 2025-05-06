@@ -29,7 +29,7 @@ def generate_launch_description():
         remappings=[
             ("imu/data_raw", "articutool/imu_data"),
             ("imu/mag", "articutool/magnetic_field"),
-            ("imu/data", "articutool/estimated_orientation"),
+            ("imu/data", "articutool/imu_data_and_orientation"),
         ],
         parameters=[
             os.path.join(articutool_orientation_directory, "config", "imu_filter.yaml")

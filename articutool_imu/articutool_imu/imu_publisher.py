@@ -16,7 +16,7 @@ class IMUPublisher(Node):
         super().__init__("imu_publisher")
         self.declare_parameter("imu_port", "/dev/imu")
         self.declare_parameter("baud_rate", 115200)
-        self.declare_parameter("frame_id", "imu_frame")
+        self.declare_parameter("frame_id", "atool_imu_frame")
 
         self.imu_port = (
             self.get_parameter("imu_port").get_parameter_value().string_value

@@ -133,6 +133,15 @@ def generate_launch_description():
         condition=IfCondition(launch_orientation),
     )
 
+    orientation_relay_node = Node(
+        package="articutool_system",
+        executable="orientation_relay_node",
+        name="orientation_relay",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        condition=IfCondition(launch_orientation),
+    )
+
     # Include articutool_moveit launch file
     moveit_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -202,6 +211,7 @@ def generate_launch_description():
             launch_rviz_arg,
             imu_launch,
             orientation_launch,
+            orientation_relay_node,
             moveit_launch,
             orientation_control_node,
         ]
