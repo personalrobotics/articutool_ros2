@@ -1,8 +1,8 @@
 # U2D2 (FTDI)
-SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT9BTM52", SYMLINK+="u2d2"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT9BTM52", SYMLINK+="u2d2", GROUP="dialout", MODE="0660"
 
 # IMU Sensor (CH341)
-SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="imu"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="imu", GROUP="dialout", MODE="0660"
 
 # Realsense D415 Camera
-SUBSYSTEM=="video4linux", ATTRS{idVendor}=="8086", ATTRS{idProduct}=="0ad6", SYMLINK+="realsense435"
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="8086", ATTRS{idProduct}=="0ad6", SYMLINK+="realsense435", GROUP="dialout", MODE="0660"
