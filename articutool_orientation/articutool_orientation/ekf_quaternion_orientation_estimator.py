@@ -204,8 +204,8 @@ class QuaternionRollPitchEstimator(Node):
         # Quaternion update: q_new = (I + 0.5 * Omega * dt) * q_old
         # More robust way: q_new = exp(0.5 * Omega * dt) * q_old
         # For small dt, (I + 0.5 * Omega * dt) is a good approximation
-        delta_q_vec = np.exp(0.5 * gyro_corrected * dt)
-        #delta_q_vec = 0.5 * gyro_corrected * dt
+        #delta_q_vec = np.exp(0.5 * gyro_corrected * dt)
+        delta_q_vec = 0.5 * gyro_corrected * dt
         delta_q_norm = np.linalg.norm(delta_q_vec)
 
         # Using exact quaternion kinematics for integration can be more stable
