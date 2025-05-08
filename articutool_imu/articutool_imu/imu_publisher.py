@@ -55,16 +55,27 @@ class IMUPublisher(Node):
 
         if len(data) == 14:
             try:
-                accel_x = float(data[2])
-                accel_y = float(data[3])
-                accel_z = float(data[4])
+                # --- Define Conversion Factors ---
+                GRAVITY_MPS2 = 9.80665 
+                MG_TO_MPS2 = GRAVITY_MPS2 / 1000.0
+                MICROTESLA_TO_TESLA = 1.0e-6
+
+                # --- Acceleration (Convert from mg to m/s^2) ---
+                accel_x = float(data[2]) * MG_TO_MPS2
+                accel_y = float(data[3]) * MG_TO_MPS2
+                accel_z = float(data[4]) * MG_TO_MPS2
+
+                # --- Gyroscope (Convert from deg/s to rad/s) ---
                 gyro_x = math.radians(float(data[5]))
                 gyro_y = math.radians(float(data[6]))
                 gyro_z = math.radians(float(data[7]))
-                mag_x = float(data[8])
-                mag_y = float(data[9])
-                mag_z = float(data[10])
 
+                # --- Magnetometer (Convert microTesla to Tesla) ---
+                mag_x = float(data[8]) * MICROTESLA_TO_TESLA 
+                mag_y = float(data[9]) * MICROTESLA_TO_TESLA 
+                mag_z = float(data[10]) * MICROTESLA_TO_TESLA
+
+                # --- Create Messages ---
                 header = Header()
                 header.stamp = self.get_clock().now().to_msg()
                 header.frame_id = self.frame_id
@@ -73,54 +84,14 @@ class IMUPublisher(Node):
                 imu_msg.header = header
                 imu_msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
                 imu_msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
-                imu_msg.orientation_covariance = [
-                    -1.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-                imu_msg.angular_velocity_covariance = [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-                imu_msg.linear_acceleration_covariance = [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
+                imu_msg.orientation_covariance = [-1.0] + [0.0]*8 
+                imu_msg.angular_velocity_covariance = [0.0]*9
+                imu_msg.linear_acceleration_covariance = [0.0]*9
 
                 mag_msg = MagneticField()
                 mag_msg.header = header
                 mag_msg.magnetic_field = Vector3(x=mag_x, y=mag_y, z=mag_z)
-                mag_msg.magnetic_field_covariance = [
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
+                mag_msg.magnetic_field_covariance = [0.0]*9
 
                 self.imu_publisher_.publish(imu_msg)
                 self.mag_publisher_.publish(mag_msg)
