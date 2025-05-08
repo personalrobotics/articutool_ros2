@@ -139,7 +139,7 @@ def main(args=None):
     except KeyboardInterrupt:
         visualizer.get_logger().info("Keyboard interrupt, shutting down.")
     except Exception as e:
-        visualizer.get_logger().error(f"Unhandled exception: {e}", exc_info=True)
+        visualizer.get_logger().error(f"Unhandled exception: {e}")
     finally:
         if visualizer.context.ok():
              visualizer.destroy_node()
