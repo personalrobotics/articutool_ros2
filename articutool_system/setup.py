@@ -35,7 +35,6 @@ setup(
             "orientation_control = articutool_system.orientation_control:main",
             "articutool_keyboard_teleop = scripts.articutool_keyboard_teleop:main",
             "joint_state_republisher = articutool_system.joint_state_republisher:main",
-            "orientation_relay_node = articutool_system.orientation_relay_node:main",
         ],
     },
 )

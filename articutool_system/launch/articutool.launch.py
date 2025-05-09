@@ -54,6 +54,17 @@ def generate_launch_description():
 
     end_effector_tool = LaunchConfiguration("end_effector_tool")
 
+    # Declare (IMU) filter_type launch argument
+    filter_type_arg = DeclareLaunchArgument(
+        'filter_type',
+        default_value='complementary',
+        description='Type of orientation filter to use.',
+        choices=['ekf', 'complementary', 'madgwick']
+    )
+
+    filter_type = LaunchConfiguration("filter_type")
+
+
     # Declare controllers_file launch argument
     controllers_file_arg = DeclareLaunchArgument(
         "controllers_file",
@@ -130,15 +141,7 @@ def generate_launch_description():
                 )
             ]
         ),
-        condition=IfCondition(launch_orientation),
-    )
-
-    orientation_relay_node = Node(
-        package="articutool_system",
-        executable="orientation_relay_node",
-        name="orientation_relay",
-        output="screen",
-        arguments=["--ros-args", "--log-level", log_level],
+        launch_arguments={"filter_type": filter_type}.items(),
         condition=IfCondition(launch_orientation),
     )
 
@@ -203,6 +206,7 @@ def generate_launch_description():
             u2d2_port_arg,
             sim_arg,
             end_effector_tool_arg,
+            filter_type_arg,
             controllers_file_arg,
             log_level_arg,
             launch_imu_arg,
