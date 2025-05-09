@@ -215,7 +215,6 @@ def generate_launch_description():
             launch_rviz_arg,
             imu_launch,
             orientation_launch,
-            orientation_relay_node,
             moveit_launch,
             orientation_control_node,
         ]
