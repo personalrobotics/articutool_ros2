@@ -11,9 +11,9 @@ madgwick_orientation_publisher:
     constant_dt: 0.0
     publish_debug_topics: false
     world_frame: "enu"
-    gain: 0.5
-    zeta: 0.0
+    gain: 0.2
+    zeta: 0.01
     mag_bias_x: 0.0
     mag_bias_y: 0.0
     mag_bias_z: 0.0
-    orientation_stddev: 0.0
+    orientation_stddev: 0.02
