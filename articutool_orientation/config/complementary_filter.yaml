@@ -1,4 +1,4 @@
-complementary_filter_gain_node:
+complementary_orientation_publisher:
   ros__parameters:
     gain_acc: 0.1
     gain_mag: 0.01

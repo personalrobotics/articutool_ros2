@@ -1,7 +1,7 @@
 # Copyright (c) 2025, Personal Robotics Laboratory
 # License: BSD 3-Clause. See LICENSE.md file in root directory.
 
-imu_filter:
+madgwick_orientation_publisher:
   ros__parameters:
     stateless: false
     use_mag: false
