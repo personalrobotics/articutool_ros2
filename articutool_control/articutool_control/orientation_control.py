@@ -149,7 +149,9 @@ class OrientationControl(Node):
             "joint_limits.upper", [math.pi / 2, math.pi / 2], joint_limit_upper_desc
         )
         self.declare_parameter(
-            "joint_limits.threshold", 0.1, joint_limit_threshold_desc # e.g., ~6 degrees
+            "joint_limits.threshold",
+            0.1,
+            joint_limit_threshold_desc,  # e.g., ~6 degrees
         )
         self.declare_parameter(
             "joint_limits.dampening_factor", 1.0, joint_limit_dampening_factor_desc
@@ -169,10 +171,16 @@ class OrientationControl(Node):
         self.tooltip_link = self.get_parameter("tooltip_frame").value
         self.joint_names = self.get_parameter("joint_names").value
         xacro_filename = self.get_parameter("urdf_path").value
-        self.joint_limits_lower = np.array(self.get_parameter("joint_limits.lower").value)
-        self.joint_limits_upper = np.array(self.get_parameter("joint_limits.upper").value)
+        self.joint_limits_lower = np.array(
+            self.get_parameter("joint_limits.lower").value
+        )
+        self.joint_limits_upper = np.array(
+            self.get_parameter("joint_limits.upper").value
+        )
         self.joint_limit_threshold = self.get_parameter("joint_limits.threshold").value
-        self.joint_limit_dampening_factor = self.get_parameter("joint_limits.dampening_factor").value
+        self.joint_limit_dampening_factor = self.get_parameter(
+            "joint_limits.dampening_factor"
+        ).value
 
         if len(self.joint_names) != 2:
             raise ValueError("Expecting exactly 2 joint names (Pitch, Roll)")
@@ -401,7 +409,7 @@ class OrientationControl(Node):
                 self.pin_data,
                 q,
                 self.tooltip_frame_id,
-                pin.ReferenceFrame.LOCAL
+                pin.ReferenceFrame.LOCAL,
             )
             # Use stored velocity indices
             J_tooltip_angular_l = J_tooltip_local_full[
@@ -457,7 +465,9 @@ class OrientationControl(Node):
         # Update time for next iteration
         self.last_time = now
 
-    def _dampen_velocities_near_limits(self, current_q: np.ndarray, desired_dq: np.ndarray) -> np.ndarray:
+    def _dampen_velocities_near_limits(
+        self, current_q: np.ndarray, desired_dq: np.ndarray
+    ) -> np.ndarray:
         """
         Dampens desired joint velocities if moving towards a limit and within threshold.
 
@@ -478,24 +488,32 @@ class OrientationControl(Node):
             upper_limit = self.joint_limits_upper[i]
 
             # Check lower limit
-            if dq_i < 0: # Moving towards lower limit
+            if dq_i < 0:  # Moving towards lower limit
                 distance_to_lower = q_i - lower_limit
                 if distance_to_lower < self.joint_limit_threshold:
                     # Calculate scaling factor (0 at limit, 1 at threshold)
                     # Clamp distance to be non-negative before division
-                    scale = max(0.0, distance_to_lower) / (self.joint_limit_threshold + epsilon)
+                    scale = max(0.0, distance_to_lower) / (
+                        self.joint_limit_threshold + epsilon
+                    )
                     # Apply exponential dampening (ensure scale is [0, 1])
-                    scale = np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    scale = (
+                        np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    )
                     dampened_dq[i] = dq_i * scale
 
             # Check upper limit
-            elif dq_i > 0: # Moving towards upper limit
+            elif dq_i > 0:  # Moving towards upper limit
                 distance_to_upper = upper_limit - q_i
                 if distance_to_upper < self.joint_limit_threshold:
                     # Calculate scaling factor (0 at limit, 1 at threshold)
-                    scale = max(0.0, distance_to_upper) / (self.joint_limit_threshold + epsilon)
-                     # Apply exponential dampening (ensure scale is [0, 1])
-                    scale = np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    scale = max(0.0, distance_to_upper) / (
+                        self.joint_limit_threshold + epsilon
+                    )
+                    # Apply exponential dampening (ensure scale is [0, 1])
+                    scale = (
+                        np.clip(scale, 0.0, 1.0) ** self.joint_limit_dampening_factor
+                    )
                     dampened_dq[i] = dq_i * scale
 
         return dampened_dq
