@@ -8,9 +8,9 @@ uint8 MODE_FULL_ORIENTATION = 2 # Calibrated, robot-base relative control
 uint8 control_mode       # Use constants above
 
 # Target for MODE_LEVELING: Angles relative to gravity plane (degrees)
-# pitch_rel_grav=0 and roll_rel_grav=0 means pure horizontal leveling.
-float32 pitch_rel_grav   # Desired pitch angle relative to gravity horizontal plane (degrees)
-float32 roll_rel_grav    # Desired roll angle relative to gravity horizontal plane (degrees)
+# pitch_offset=0 and roll_offset=0 means pure horizontal leveling.
+float32 pitch_offset
+float32 roll_offset
 
 # Target for MODE_FULL_ORIENTATION: Full orientation relative to robot base frame
 # This quaternion MUST be defined relative to the frame specified
