@@ -17,6 +17,7 @@ find_package(builtin_interfaces REQUIRED)
 # Add interfaces here if any are defined in the future
 set(interface_files
   "srv/SetOrientationControl.srv"
+  "srv/TriggerCalibration.srv"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${interface_files}

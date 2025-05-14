@@ -56,14 +56,13 @@ def generate_launch_description():
 
     # Declare (IMU) filter_type launch argument
     filter_type_arg = DeclareLaunchArgument(
-        'filter_type',
-        default_value='complementary',
-        description='Type of orientation filter to use.',
-        choices=['ekf', 'complementary', 'madgwick']
+        "filter_type",
+        default_value="complementary",
+        description="Type of orientation filter to use.",
+        choices=["ekf", "complementary", "madgwick"],
     )
 
     filter_type = LaunchConfiguration("filter_type")
-
 
     # Declare controllers_file launch argument
     controllers_file_arg = DeclareLaunchArgument(

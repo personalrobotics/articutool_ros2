@@ -1,7 +1,22 @@
-# Request
-bool enable                       # True to activate/hold, False to deactivate
-geometry_msgs/Quaternion target_orientation  # Target orientation for tool_tip frame relative to world/base frame
+# articutool_interfaces/srv/SetOrientationControl.srv
+
+# Define control modes
+uint8 MODE_DISABLED = 0  # Explicitly disable control
+uint8 MODE_LEVELING = 1  # Gravity-based leveling (yaw invariant)
+uint8 MODE_FULL_ORIENTATION = 2 # Calibrated, robot-base relative control
+
+uint8 control_mode       # Use constants above
+
+# Target for MODE_LEVELING: Angles relative to gravity plane (degrees)
+# pitch_rel_grav=0 and roll_rel_grav=0 means pure horizontal leveling.
+float32 pitch_rel_grav   # Desired pitch angle relative to gravity horizontal plane (degrees)
+float32 roll_rel_grav    # Desired roll angle relative to gravity horizontal plane (degrees)
+
+# Target for MODE_FULL_ORIENTATION: Full orientation relative to robot base frame
+# This quaternion MUST be defined relative to the frame specified
+# by the 'robot_base_frame' parameter (e.g., j2n6s200_link_base).
+geometry_msgs/Quaternion target_orientation_robot_base # Target for MODE_FULL_ORIENTATION
+
 ---
-# Response
-bool success                      # True if the request was processed successfully
-string message                    # Optional status message
+bool success             # True if mode switch/enable was successful
+string message           # Feedback message

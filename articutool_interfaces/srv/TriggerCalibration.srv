@@ -1,0 +1,9 @@
+# articutool_interfaces/srv/TriggerCalibration.srv
+# Empty request triggers calibration. Ensure robot is stationary.
+---
+bool success
+string message
+# Optionally return the computed offset quaternion for logging/debugging
+# This represents the rotation from the IMU Filter's arbitrary startup
+# world frame to the robot's base frame.
+geometry_msgs/Quaternion computed_offset_jacobase_to_filterworld
