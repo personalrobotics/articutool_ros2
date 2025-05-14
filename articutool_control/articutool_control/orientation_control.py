@@ -84,7 +84,6 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(
                 f"Pinocchio setup failed: {e}. MODE_FULL_ORIENTATION and calibration may be unavailable.",
-                exc_info=True,
             )
             # Nullify Pinocchio-dependent members to ensure they are not used if setup fails
             self.pin_model = None
@@ -203,6 +202,27 @@ class OrientationControl(Node):
             1.0,
             ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
         )
+        self.declare_parameter(
+            "leveling_singularity_cos_roll_threshold",
+            0.4,
+            ParameterDescriptor(
+                type=ParameterType.PARAMETER_DOUBLE,
+                description="Cosine of roll angle threshold for detecting leveling mode pitch singularity.",
+            ),
+        )
+        self.declare_parameter(
+            "leveling_error_deadband_rad",
+            0.005,
+            ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
+        )
+        self.declare_parameter(
+            "leveling_singularity_damp_power",
+            3.0,
+            ParameterDescriptor(
+                type=ParameterType.PARAMETER_DOUBLE,
+                description="Power for the singularity dampening curve. >1.0 dampens pitch cmd more aggressively as cos(roll) approaches 0.",
+            ),
+        )
 
     def _load_parameters(self):
         # ... (Same as before) ...
@@ -241,6 +261,15 @@ class OrientationControl(Node):
         self.joint_limit_threshold = self.get_parameter("joint_limits.threshold").value
         self.joint_limit_dampening_factor = self.get_parameter(
             "joint_limits.dampening_factor"
+        ).value
+        self.leveling_singularity_cos_roll_threshold = self.get_parameter(
+            "leveling_singularity_cos_roll_threshold"
+        ).value
+        self.leveling_error_deadband_rad = self.get_parameter(
+            "leveling_error_deadband_rad"
+        ).value
+        self.leveling_singularity_damp_power = self.get_parameter(
+            "leveling_singularity_damp_power"
         ).value
         self.get_logger().debug("Parameters loaded/reloaded.")
 
@@ -406,7 +435,6 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(
                 f"Pinocchio setup failed during model processing: {e}. MODE_FULL_ORIENTATION and calibration may be unavailable.",
-                exc_info=True,
             )
             self.pin_model = None  # Ensure it's None on failure
             self.R_imu_handle_pin = None
@@ -658,18 +686,12 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(
                 f"Unhandled exception in control_loop (Mode: {self.current_mode}): {e}",
-                exc_info=True,
             )
             self._publish_zero_command()
 
     def _calculate_leveling_control_analytic_jacobian(
         self, dt: float
     ) -> Optional[np.ndarray]:
-        """
-        Mode LEVELING: Keeps tool_tip Y-axis aligned with FilterWorld Z-up (gravity).
-        Uses an analytic Jacobian and a pre-calculated R_IMU_TO_HANDLE_FIXED_SCIPY.
-        This method is now Pinocchio-independent.
-        """
         if (
             self.current_filterworld_to_imu_raw is None
             or self.current_joint_positions is None
@@ -681,29 +703,50 @@ class OrientationControl(Node):
             return None
 
         try:
-            theta_p_curr = self.current_joint_positions[0]
-            theta_r_curr = self.current_joint_positions[1]
+            theta_p_curr = self.current_joint_positions[0]  # atool_joint1
+            theta_r_curr = self.current_joint_positions[1]  # atool_joint2
 
-            # Use the pre-calculated fixed transform
+            # ... (R_FilterW_Handle, y_tip_in_F0_curr, target_y_tip_in_FilterW, y_tip_in_FilterW_curr calculation) ...
             R_FilterW_Handle: R = (
                 self.current_filterworld_to_imu_raw * self.R_IMU_TO_HANDLE_FIXED_SCIPY
             )
 
             cp, sp = math.cos(theta_p_curr), math.sin(theta_p_curr)
-            cr, sr = math.cos(theta_r_curr), math.sin(theta_r_curr)
-            y_tip_in_F0_curr = np.array([cp * cr, sr, sp * cr])  # Y-tip in Handle frame
-            y_tip_in_FilterW_curr = R_FilterW_Handle.apply(y_tip_in_F0_curr)
+            cr, sr = math.cos(theta_r_curr), math.sin(theta_r_curr)  # cr is cos(roll)
+            y_tip_in_F0_curr = np.array([cp * cr, sr, sp * cr])
             target_y_tip_in_FilterW = self.WORLD_Z_UP_VECTOR
+            y_tip_in_FilterW_curr = R_FilterW_Handle.apply(y_tip_in_F0_curr)
 
+            # --- Error Calculation (remains the same) ---
+            # ...
             axis_err_FilterW = np.cross(y_tip_in_FilterW_curr, target_y_tip_in_FilterW)
             dot_prod = np.dot(y_tip_in_FilterW_curr, target_y_tip_in_FilterW)
             angle_err = math.acos(np.clip(dot_prod, -1.0, 1.0))
 
             error_vec_FilterW = np.zeros(3)
             norm_axis_err_val = np.linalg.norm(axis_err_FilterW)
-            if norm_axis_err_val > self.EPSILON:
-                error_vec_FilterW = (axis_err_FilterW / norm_axis_err_val) * angle_err
+
+            # Error Deadband Logic
+            if (
+                norm_axis_err_val < self.EPSILON
+                and abs(angle_err) < self.leveling_error_deadband_rad
+            ):  # Check angle_err if axis is near zero
+                error_vec_FilterW = np.zeros(3)  # Effectively no rotational error
+                self.get_logger().debug(
+                    "Leveling error within deadband based on angle_err."
+                )
+            elif norm_axis_err_val > self.EPSILON:  # Normal case: axis is well defined
+                if angle_err < self.leveling_error_deadband_rad:
+                    error_vec_FilterW = np.zeros(3)
+                    self.get_logger().debug(
+                        "Leveling error within deadband based on angle_err (axis valid)."
+                    )
+                else:
+                    error_vec_FilterW = (
+                        axis_err_FilterW / norm_axis_err_val
+                    ) * angle_err
             elif dot_prod < (-1.0 + self.EPSILON):  # Anti-parallel
+                # ... (anti-parallel logic remains the same) ...
                 arbitrary_axis = np.array([1.0, 0.0, 0.0])
                 if (
                     np.linalg.norm(np.cross(y_tip_in_FilterW_curr, arbitrary_axis))
@@ -711,32 +754,48 @@ class OrientationControl(Node):
                 ):
                     arbitrary_axis = np.array([0.0, 1.0, 0.0])
                 rotation_axis = np.cross(y_tip_in_FilterW_curr, arbitrary_axis)
-                if np.linalg.norm(rotation_axis) > self.EPSILON:
+                if (
+                    np.linalg.norm(rotation_axis) > self.EPSILON
+                ):  # Check if rotation_axis is valid
                     error_vec_FilterW = (
                         rotation_axis / np.linalg.norm(rotation_axis)
                     ) * math.pi
-                else:
-                    error_vec_FilterW = np.array([math.pi, 0.0, 0.0])
+                else:  # Should not happen if y_tip_in_FilterW_curr is not zero and not aligned with arbitrary_axis
+                    error_vec_FilterW = np.array([math.pi, 0.0, 0.0])  # Fallback
+            # --- End Error Calculation ---
 
-            self.integral_error_leveling += error_vec_FilterW * dt
-            self.integral_error_leveling = np.clip(
-                self.integral_error_leveling, -self.integral_max, self.integral_max
-            )
+            # --- PID Controller ---
+            if np.allclose(
+                error_vec_FilterW, 0.0
+            ):  # If error is zero (or within deadband making it zero)
+                self.get_logger().debug(
+                    "Leveling error is zero or within deadband, PID output will be zero."
+                )
+                omega_corr_FilterW = np.zeros(3)
+                # Keep integral from winding down if Ki is non-zero and error is truly zero.
+                # Or let it decay slowly. For now, just don't add to it if error is zero.
+            else:
+                self.integral_error_leveling += error_vec_FilterW * dt
+                self.integral_error_leveling = np.clip(
+                    self.integral_error_leveling, -self.integral_max, self.integral_max
+                )
+            # Derivative term always calculated on error_vec_FilterW (which might be zero)
             derivative_error = (
                 (error_vec_FilterW - self.last_error_leveling) / dt
                 if dt > self.EPSILON
                 else np.zeros(3)
             )
+            # PID calculation
             omega_corr_FilterW = (
                 self.Kp * error_vec_FilterW
                 + self.Ki * self.integral_error_leveling
                 + self.Kd * derivative_error
             )
             self.last_error_leveling = np.copy(error_vec_FilterW)
+            # --- End PID Controller ---
 
             omega_corr_in_F0 = R_FilterW_Handle.inv().apply(omega_corr_FilterW)
 
-            # Analytic Pointing Jacobian J_point_in_F0 (maps [dp, dr] to d(y_tip_in_F0)/dt)
             J_point_in_F0 = np.array(
                 [[-sp * cr, -cp * sr], [0.0, cr], [cp * cr, -sp * sr]]
             )
@@ -746,54 +805,60 @@ class OrientationControl(Node):
                     J_point_in_F0, rcond=self.JACOBIAN_PINV_RCOND
                 )
             except np.linalg.LinAlgError:
+                # ... (warning and return zeros) ...
                 self.get_logger().warn(
-                    "Leveling control (Analytic): Pointing Jacobian pseudo-inverse failed.",
+                    "Leveling control (Analytic): Pointing Jacobian pseudo-inverse failed. Commanding zero.",
                     throttle_duration_sec=1.0,
                 )
-                return np.zeros(2)
+                return np.zeros(len(self.articutool_joint_names))
 
             desired_y_tip_linear_velocity_in_F0 = np.cross(
                 omega_corr_in_F0, y_tip_in_F0_curr
             )
-            self.get_logger().info(
-                f"  desired_y_tip_linear_velocity_in_F0: {np.round(desired_y_tip_linear_velocity_in_F0, 4)}"
-            )  # Add this log
-            dq_desired = J_point_in_F0_pinv @ desired_y_tip_linear_velocity_in_F0
+            dq_calculated = J_point_in_F0_pinv @ desired_y_tip_linear_velocity_in_F0
 
-            self.get_logger().info(f"LEVELING CTRL (Analytic) TICK (dt={dt:.4f}):")
-            self.get_logger().info(
-                f"  Angles (p,r): ({theta_p_curr:.3f}, {theta_r_curr:.3f})"
-            )
-            self.get_logger().info(
-                f"  R_FilterW_Handle (quat xyzw): {R_FilterW_Handle.as_quat()}"
-            )
-            self.get_logger().info(
-                f"  y_tip_in_F0_curr: {np.round(y_tip_in_F0_curr, 3)}"
-            )
-            self.get_logger().info(
-                f"  y_tip_in_FilterW_curr: {np.round(y_tip_in_FilterW_curr, 3)}"
-            )
-            self.get_logger().info(
-                f"  angle_err_rad: {angle_err:.4f} ({(angle_err * 180 / math.pi):.2f} deg)"
-            )
-            self.get_logger().info(
-                f"  error_vec_FilterW: {np.round(error_vec_FilterW, 4)}"
-            )
-            self.get_logger().info(
-                f"  omega_corr_FilterW: {np.round(omega_corr_FilterW, 4)}"
-            )
-            self.get_logger().info(
-                f"  omega_corr_in_F0: {np.round(omega_corr_in_F0, 4)}"
-            )
-            self.get_logger().info(f"  dq_desired (raw): {np.round(dq_desired, 4)}")
+            # --- Singularity-Based Dampening for Pitch Joint (index 0) ---
+            pitch_singularity_scale = 1.0  # Default: no dampening
+            abs_cr = abs(cr)  # abs(cos(roll_angle))
 
-            return self._dampen_velocities_near_limits(
-                self.current_joint_positions, dq_desired
+            # Ensure threshold is positive to avoid division by zero if it was set to 0 accidentally
+            effective_singularity_threshold = max(
+                self.leveling_singularity_cos_roll_threshold, self.EPSILON
             )
+
+            if abs_cr < effective_singularity_threshold:
+                # normalized_cr_for_scaling goes from (just under) 1 down to 0 as abs_cr goes from threshold to 0
+                normalized_cr_for_scaling = abs_cr / effective_singularity_threshold
+
+                # Apply the dampening power
+                # Ensure base is not negative if power is non-integer, though normalized_cr_for_scaling should be >= 0
+                if normalized_cr_for_scaling >= 0:
+                    pitch_singularity_scale = (
+                        normalized_cr_for_scaling**self.leveling_singularity_damp_power
+                    )
+                else:  # Should not happen with abs() and max()
+                    pitch_singularity_scale = 0.0
+
+                pitch_singularity_scale = np.clip(pitch_singularity_scale, 0.0, 1.0)
+
+                if pitch_singularity_scale < 0.99:  # Log only if significant dampening
+                    self.get_logger().warn(
+                        f"Pitch singularity dampening: |cos(roll)|={abs_cr:.4f} (thresh={effective_singularity_threshold:.4f}), "
+                        f"scale={pitch_singularity_scale:.4f}. Pitch dq: {dq_calculated[0]:.4f} -> {dq_calculated[0] * pitch_singularity_scale:.4f}",
+                        throttle_duration_sec=1.0,
+                    )
+                dq_calculated[0] *= pitch_singularity_scale
+            # --- End Singularity-Based Dampening ---
+
+            final_dq_desired = self._dampen_velocities_near_limits(
+                self.current_joint_positions, dq_calculated
+            )
+            return final_dq_desired
 
         except Exception as e:
+            # ... (error logging and return zeros) ...
             self.get_logger().error(f"Error in Analytic Jacobian Leveling Control: {e}")
-            return None
+            return np.zeros(len(self.articutool_joint_names))
 
     def _calculate_full_orientation_control(self, dt: float) -> Optional[np.ndarray]:
         # ... (Logic remains the same, relies on self.pin_model and self.R_imu_handle_pin) ...
@@ -880,7 +945,6 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(
                 f"Error in Full Orientation Control (Pinocchio Jacobian): {e}",
-                exc_info=True,
             )
             return None
 
@@ -987,7 +1051,6 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(
                 f"Error calculating joint velocities with Pinocchio Jacobian: {e}",
-                exc_info=True,
             )
             return None
 
