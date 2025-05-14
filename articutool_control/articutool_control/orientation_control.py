@@ -1006,35 +1006,59 @@ class OrientationControl(Node):
 
     def _dampen_velocities_near_limits(
         self, current_q: Optional[np.ndarray], desired_dq: np.ndarray
-    ) -> np.ndarray:  # current_q can be None
-        # ... (Same as before, added None check for current_q) ...
+    ) -> np.ndarray:
         dampened_dq = np.copy(desired_dq)
-        if current_q is None or len(current_q) != 2 or len(desired_dq) != 2:
+        if (
+            current_q is None
+            or len(current_q) != len(self.articutool_joint_names)
+            or len(desired_dq) != len(self.articutool_joint_names)
+        ):
             self.get_logger().error(
-                "Dampening: current_q is None or invalid length for current_q/desired_dq."
+                f"Dampening: current_q ({current_q}) is None or length mismatch with desired_dq ({len(desired_dq)}) or joint_names ({len(self.articutool_joint_names)})."
             )
-            return desired_dq  # Return undampened if current_q is not available
-        for i in range(2):
+            # Return a zero array of the correct size if desired_dq is problematic, or desired_dq if current_q is the issue
+            if len(desired_dq) != len(self.articutool_joint_names):
+                return np.zeros(len(self.articutool_joint_names))
+            return desired_dq
+
+        for i in range(len(self.articutool_joint_names)):
             q_i, dq_i = current_q[i], desired_dq[i]
             lower_limit, upper_limit = (
                 self.joint_limits_lower[i],
                 self.joint_limits_upper[i],
             )
-            threshold, damp_factor = (
-                self.joint_limit_threshold,
-                self.joint_limit_dampening_factor,
+            # Ensure threshold is positive to avoid division by zero or unintended behavior
+            threshold = max(self.joint_limit_threshold, self.EPSILON)
+            damp_factor = self.joint_limit_dampening_factor
+
+            scale = 1.0  # Default: no dampening
+
+            # Moving towards lower limit
+            if dq_i < -self.EPSILON:
+                distance_to_lower = q_i - lower_limit
+                if distance_to_lower < threshold:
+                    # Scale is 0 at the limit, 1 at the threshold distance
+                    current_scale = distance_to_lower / threshold
+                    scale = np.clip(current_scale, 0.0, 1.0) ** damp_factor
+                    # self.get_logger().debug(f"Joint {i} dampening towards lower: q={q_i:.3f}, dq={dq_i:.3f}, dist={distance_to_lower:.3f}, scale={scale:.3f}")
+
+            # Moving towards upper limit
+            elif dq_i > self.EPSILON:
+                distance_to_upper = upper_limit - q_i
+                if distance_to_upper < threshold:
+                    # Scale is 0 at the limit, 1 at the threshold distance
+                    current_scale = distance_to_upper / threshold
+                    scale = np.clip(current_scale, 0.0, 1.0) ** damp_factor
+                    # self.get_logger().debug(f"Joint {i} dampening towards upper: q={q_i:.3f}, dq={dq_i:.3f}, dist={distance_to_upper:.3f}, scale={scale:.3f}")
+
+            dampened_dq[i] *= scale
+
+        if not np.allclose(
+            desired_dq, dampened_dq, atol=1e-4
+        ):  # Add tolerance for logging
+            self.get_logger().debug(
+                f"Dampening: q={np.round(current_q, 3)}, original_dq={np.round(desired_dq, 3)}, dampened_dq={np.round(dampened_dq, 3)}"
             )
-            if (dq_i < -self.EPSILON and (q_i - lower_limit) < threshold) or (
-                dq_i > self.EPSILON and (upper_limit - q_i) < threshold
-            ):
-                distance_to_limit = (
-                    (q_i - lower_limit) if dq_i < 0 else (upper_limit - q_i)
-                )
-                scale = max(0.0, distance_to_limit) / (
-                    threshold + self.EPSILON
-                )  # Ensure denominator > 0
-                scale = np.clip(scale, 0.0, 1.0) ** damp_factor
-                dampened_dq[i] *= scale
         return dampened_dq
 
     def _publish_command(self, joint_velocities: Optional[np.ndarray]):  # Can be None
