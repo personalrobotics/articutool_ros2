@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y \
     ros-humble-dynamixel-workbench-toolbox \
     ros-humble-pinocchio \
     ros-humble-tf-transformations \
+    ros-humble-imu-tools \
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies with pip
