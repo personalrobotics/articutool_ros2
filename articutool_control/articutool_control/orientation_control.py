@@ -208,7 +208,7 @@ class OrientationControl(Node):
         )
         self.declare_parameter(
             "leveling_singularity_cos_roll_threshold",
-            0.4,  # cos(roll_joint_angle) below which pitch cmd is dampened
+            0.6,  # cos(roll_joint_angle) below which pitch cmd is dampened
             ParameterDescriptor(
                 type=ParameterType.PARAMETER_DOUBLE,
                 description="Cosine of roll angle threshold for detecting leveling mode pitch singularity.",
@@ -216,12 +216,12 @@ class OrientationControl(Node):
         )
         self.declare_parameter(
             "leveling_error_deadband_rad",
-            0.005,  # Radians, error below this is considered zero for leveling
+            0.015,  # Radians, error below this is considered zero for leveling
             ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
         )
         self.declare_parameter(
             "leveling_singularity_damp_power",
-            3.0,  # Power for singularity dampening factor
+            5.0,  # Power for singularity dampening factor
             ParameterDescriptor(
                 type=ParameterType.PARAMETER_DOUBLE,
                 description="Power for the singularity dampening curve. >1.0 dampens pitch cmd more aggressively as cos(roll) approaches 0.",
