@@ -25,8 +25,10 @@ RUN pip3 install pinocchio pyserial numpy scipy matplotlib filterpy
 RUN mkdir -p /articutool_ws/src
 
 # Clone Articutool repository(s)
-RUN git clone https://github.com/personalrobotics/articutool_ros2.git && \
-    mv articutool_ros2 /articutool_ws/src/
+# This initial clone is still useful to have the repo content in the base image
+RUN git clone https://github.com/personalrobotics/articutool_ros2.git /articutool_ws/src/articutool_ros2
+# Note: The original Dockerfile had 'mv articutool_ros2 /articutool_ws/src/'.
+# Cloning directly to the final path is cleaner.
 
 # Update rosdep and apt repositories
 RUN rosdep update && apt-get update
@@ -37,14 +39,23 @@ RUN rosdep install --from-paths /articutool_ws/src --ignore-src -r -y --rosdistr
 # Build Articutool workspace
 RUN bash -c "source /opt/ros/humble/setup.bash && cd /articutool_ws && colcon build --symlink-install"
 
-# Source Articutool setup
+# Source Articutool setup in .bashrc for interactive shells
 RUN echo "source /articutool_ws/install/setup.bash" >> /root/.bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc # Also ensure ROS setup is in .bashrc
 
 # Set the working directory
 WORKDIR /articutool_ws
 
 # Install Python dependencies from requirements.txt
+# Ensure this path is correct relative to the WORKDIR
 RUN pip install --no-cache-dir -r src/articutool_ros2/requirements.txt
 
-# Set the entry point
+# Copy and set up the entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# Set the default command to execute
+# The entrypoint script will source necessary files before executing this.
 CMD ["/bin/bash", "-c", "source /root/.bashrc && bash"]
