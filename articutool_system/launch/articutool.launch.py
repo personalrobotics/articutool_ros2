@@ -189,9 +189,9 @@ def generate_launch_description():
                 "feedback_topic": "/articutool/estimated_orientation",
                 "command_topic": "/articutool/velocity_controller/commands",
                 "joint_state_topic": "/articutool/joint_states",
-                "pid_gains.p": 3.0,
-                "pid_gains.i": 0.01,
-                "pid_gains.d": 0.1,
+                "pid_gains.p": 5.0,
+                "pid_gains.i": 0.05,
+                "pid_gains.d": 0.2,
                 "integral_clamp": 1.0,
             }
         ],
