@@ -82,22 +82,6 @@ def generate_launch_description():
 
     log_level = LaunchConfiguration("log_level")
 
-    # Declare launch imu argument
-    launch_imu_arg = DeclareLaunchArgument(
-        "launch_imu",
-        default_value="false",
-        description="Launch IMU launch file.",
-    )
-    launch_imu = LaunchConfiguration("launch_imu")
-
-    # Declare launch orientation argument
-    launch_orientation_arg = DeclareLaunchArgument(
-        "launch_orientation",
-        default_value="false",
-        description="Launch orientation launch file.",
-    )
-    launch_orientation = LaunchConfiguration("launch_orientation")
-
     # Declare launch moveit argument
     launch_moveit_arg = DeclareLaunchArgument(
         "launch_moveit",
@@ -126,7 +110,7 @@ def generate_launch_description():
             ]
         ),
         launch_arguments={"imu_port": imu_port}.items(),
-        condition=IfCondition(launch_imu),
+        condition=IfCondition(PythonExpression(["'", sim, "' == 'real'"])),
     )
 
     # Include articutool_orientation launch file
@@ -141,7 +125,7 @@ def generate_launch_description():
             ]
         ),
         launch_arguments={"filter_type": filter_type}.items(),
-        condition=IfCondition(launch_orientation),
+        condition=IfCondition(PythonExpression(["'", sim, "' == 'real'"])),
     )
 
     # Include articutool_moveit launch file
@@ -208,8 +192,6 @@ def generate_launch_description():
             filter_type_arg,
             controllers_file_arg,
             log_level_arg,
-            launch_imu_arg,
-            launch_orientation_arg,
             launch_moveit_arg,
             launch_rviz_arg,
             imu_launch,
