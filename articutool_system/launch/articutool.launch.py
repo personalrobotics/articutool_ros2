@@ -150,13 +150,6 @@ def generate_launch_description():
         condition=IfCondition(launch_moveit),
     )
 
-    # The controller needs the URDF for Pinocchio. Find the description package.
-    articutool_description_pkg = get_package_share_directory("articutool_description")
-    # Assuming the primary standalone xacro
-    articutool_urdf_xacro_path = PathJoinSubstitution(
-        [articutool_description_pkg, "urdf", "articutool_standalone.xacro"]
-    )
-
     orientation_control_node = Node(
         package="articutool_control",
         executable="orientation_control_service",
@@ -164,7 +157,13 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "urdf_path": articutool_urdf_xacro_path,
+                "urdf_path": PathJoinSubstitution(
+                    [
+                        get_package_share_directory("ada_moveit"),
+                        "config",
+                        "ada.urdf.xacro",
+                    ]
+                ),
                 "loop_rate": 50.0,
                 "joint_names": ["atool_joint1", "atool_joint2"],
                 "imu_link_frame": "atool_imu_frame",
