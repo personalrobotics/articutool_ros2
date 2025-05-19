@@ -334,14 +334,12 @@ class OrientationControl(Node):
 
     def _setup_pinocchio(self):
         if not self.xacro_filename:
-            self.get_logger().warn(
-                "URDF path not provided. Pinocchio setup skipped. MODE_FULL_ORIENTATION and calibration will be unavailable."
-            )
+            self.get_logger().warn("URDF path not provided. Pinocchio setup skipped.")
             self.pin_model = None
             return
         if not os.path.exists(self.xacro_filename):
             self.get_logger().error(
-                f"Xacro/URDF file not found at {self.xacro_filename}. Pinocchio setup failed. MODE_FULL_ORIENTATION and calibration will be unavailable."
+                f"Xacro/URDF file not found: {self.xacro_filename}."
             )
             self.pin_model = None
             return
@@ -349,7 +347,7 @@ class OrientationControl(Node):
         temp_urdf_path = None
         try:
             self.get_logger().info(
-                f"Processing Xacro/URDF file for Pinocchio: {self.xacro_filename}"
+                f"Processing Xacro/URDF for Pinocchio: {self.xacro_filename}"
             )
             if self.xacro_filename.endswith(".xacro"):
                 process = subprocess.run(
@@ -401,32 +399,82 @@ class OrientationControl(Node):
                 f"Pinocchio-derived R_handle_imu_pin (Handle to IMU, xyzw): {self.R_handle_imu_pin.as_quat()}"
             )
             self.get_logger().info(
-                f"Pinocchio-derived R_imu_handle_pin (IMU to Handle, xyzw): {self.R_imu_handle_pin.as_quat()}"
+                f"Pinocchio model has {self.pin_model.nframes} frames and {self.pin_model.njoints} joints (including universe)."
             )
 
-            diff_rot = self.R_IMU_TO_HANDLE_FIXED_SCIPY * self.R_imu_handle_pin.inv()
-            angle_diff = diff_rot.magnitude()
-            self.get_logger().info(
-                f"Angle difference between hardcoded R_IMU_Handle and Pinocchio R_IMU_Handle: {math.degrees(angle_diff):.3f} deg"
-            )
-            if angle_diff > 0.1:
-                self.get_logger().warn(
-                    "Significant difference between hardcoded R_IMU_TO_HANDLE_FIXED_SCIPY and Pinocchio-derived R_imu_handle_pin. "
-                    "Ensure URDF for 'atool_handle_to_imu_frame' joint matches the hardcoded rotation (0, -pi/2, -pi) and that Pinocchio model is loaded correctly."
+            # Log details about key frames
+            for frame_name_attr, frame_id_attr_str in [
+                ("articutool_base_link_name", "handle_frame_id_pin"),
+                ("imu_link_name", "imu_frame_id_pin"),
+                ("tooltip_link_name", "tooltip_frame_id_pin"),
+            ]:
+                link_name = getattr(self, frame_name_attr)
+                if self.pin_model.existFrame(link_name):
+                    frame_id = self.pin_model.getFrameId(link_name)
+                    setattr(self, frame_id_attr_str, frame_id)
+                    frame_obj = self.pin_model.frames[frame_id]
+                    parent_joint_id = frame_obj.parentJoint
+                    parent_joint_name = self.pin_model.names[parent_joint_id]
+                    self.get_logger().info(
+                        f"Pinocchio: Frame '{link_name}' (ID {frame_id}) is attached to JOINT '{parent_joint_name}' (ID {parent_joint_id}). "
+                        f"Its placement is w.r.t this joint. Previous frame ID: {frame_obj.previousFrame}."
+                    )
+                    if parent_joint_id == 0:  # Universe joint
+                        self.get_logger().warn(
+                            f"Pinocchio: Frame '{link_name}' appears to be attached to Universe (joint 0). This might be unexpected depending on URDF structure."
+                        )
+                else:
+                    self.get_logger().error(
+                        f"Pinocchio: Frame '{link_name}' not found in model!"
+                    )
+                    self.pin_model = None
+                    return
+
+            # Calculate and log T_handle_imu for verification
+            if self.handle_frame_id_pin != -1 and self.imu_frame_id_pin != -1:
+                q_neutral = pin.neutral(self.pin_model)
+                pin.forwardKinematics(self.pin_model, self.pin_data, q_neutral)
+                pin.updateFramePlacements(self.pin_model, self.pin_data)
+                T_pinworld_handle = self.pin_data.oMf[self.handle_frame_id_pin]
+                T_pinworld_imu = self.pin_data.oMf[self.imu_frame_id_pin]
+                self.get_logger().info(
+                    f"Pinocchio T_world_handle @ neutral q:\n{T_pinworld_handle}"
+                )
+                self.get_logger().info(
+                    f"Pinocchio T_world_imu @ neutral q:\n{T_pinworld_imu}"
                 )
 
-            imu_frame_obj = self.pin_model.frames[self.imu_frame_id_pin]
-            imu_parent_joint_id = imu_frame_obj.parentJoint
-            imu_parent_joint_name = self.pin_model.names[imu_parent_joint_id]
-            self.get_logger().info(
-                f"Pinocchio: IMU frame '{self.imu_link_name}' (ID {self.imu_frame_id_pin}) is attached to JOINT '{imu_parent_joint_name}' (ID {imu_parent_joint_id})."
-            )
-            if imu_parent_joint_id == 0:
-                self.get_logger().warn(
-                    "Pinocchio sees IMU frame's parent joint as Universe! "
-                    "This might lead to incorrect R_handle_imu_pin if URDF is not a single tree starting from Jaco base "
-                    "or if Articutool model is loaded standalone without 'atool_handle' as its fixed root."
-                )
+                if T_pinworld_handle.rotation.trace() > -0.99999:
+                    T_handle_imu_se3 = T_pinworld_handle.inverse() * T_pinworld_imu
+                    self.R_handle_imu_pin = R.from_matrix(T_handle_imu_se3.rotation)
+                    self.R_imu_handle_pin = self.R_handle_imu_pin.inv()
+                    self.get_logger().info(
+                        f"Pinocchio-derived R_handle_imu_pin (Handle to IMU, xyzw): {self.R_handle_imu_pin.as_quat()}"
+                    )
+                    self.get_logger().info(
+                        f"Pinocchio-derived T_handle_imu translation: {T_handle_imu_se3.translation.flatten()}"
+                    )
+
+                    # Compare with hardcoded
+                    if self.R_imu_handle_pin is not None:
+                        diff_rot = (
+                            self.R_IMU_TO_HANDLE_FIXED_SCIPY
+                            * self.R_imu_handle_pin.inv()
+                        )
+                        angle_diff = diff_rot.magnitude()
+                        self.get_logger().info(
+                            f"Angle difference between hardcoded R_IMU_Handle and Pinocchio R_IMU_Handle: {math.degrees(angle_diff):.3f} deg"
+                        )
+                        if angle_diff > 0.1:
+                            self.get_logger().warn(
+                                "Significant difference in R_IMU_Handle between hardcoded and Pinocchio."
+                            )
+                else:
+                    self.get_logger().error(
+                        "Could not compute T_handle_imu_se3 due to invalid T_pinworld_handle."
+                    )
+                    self.pin_model = None
+                    return
 
             self.articutool_joint_ids_pin = []
             self.articutool_q_indices_pin = []
@@ -434,11 +482,22 @@ class OrientationControl(Node):
             for joint_name in self.articutool_joint_names:
                 if not self.pin_model.existJointName(joint_name):
                     self.get_logger().error(
-                        f"Articutool joint '{joint_name}' not found in Pinocchio model. MODE_FULL_ORIENTATION will fail."
+                        f"Articutool joint '{joint_name}' not found in Pinocchio model."
                     )
                     self.pin_model = None
                     return
                 joint_id = self.pin_model.getJointId(joint_name)
+                joint_type = self.pin_model.joints[joint_id].shortname()
+                self.get_logger().info(
+                    f"Articutool Pinocchio joint: '{joint_name}' (ID: {joint_id}, Type: {joint_type}, "
+                    f"nq: {self.pin_model.joints[joint_id].nq}, nv: {self.pin_model.joints[joint_id].nv}, "
+                    f"idx_q: {self.pin_model.joints[joint_id].idx_q}, idx_v: {self.pin_model.joints[joint_id].idx_v})"
+                )
+                if self.pin_model.joints[joint_id].nv == 0:
+                    self.get_logger().warn(
+                        f"Articutool joint '{joint_name}' has nv=0 (no velocity DoFs)! This will lead to zero Jacobian columns."
+                    )
+
                 self.articutool_joint_ids_pin.append(joint_id)
                 self.articutool_q_indices_pin.append(
                     self.pin_model.joints[joint_id].idx_q
@@ -452,9 +511,7 @@ class OrientationControl(Node):
             )
 
         except Exception as e:
-            self.get_logger().error(
-                f"Pinocchio setup failed during model processing: {e}. MODE_FULL_ORIENTATION and calibration may be unavailable.",
-            )
+            self.get_logger().error(f"Pinocchio setup failed: {e}.")
             self.pin_model = None
             self.R_imu_handle_pin = None
         finally:
@@ -1023,16 +1080,24 @@ class OrientationControl(Node):
             joint_id = self.pin_model.getJointId(joint_name)
             if joint_id < 1 or joint_id >= self.pin_model.njoints:
                 raise ValueError(f"Invalid joint ID {joint_id} for {joint_name}")
-
+            # For revolute joints (nq=2, nv=1 in Pinocchio), set [cos(theta), sin(theta)]
             if (
-                self.pin_model.joints[joint_id].nq == 1
+                self.pin_model.joints[joint_id].nq == 2
                 and self.pin_model.joints[joint_id].nv == 1
             ):
-                q_idx = self.pin_model.joints[joint_id].idx_q
-                q[q_idx] = self.current_joint_positions[i]
+                theta = self.current_joint_positions[i]
+                q[self.pin_model.joints[joint_id].idx_q] = math.cos(theta)
+                q[self.pin_model.joints[joint_id].idx_q + 1] = math.sin(theta)
+            elif (
+                self.pin_model.joints[joint_id].nq == 1
+                and self.pin_model.joints[joint_id].nv == 1
+            ):  # Prismatic or simple revolute if nq=1
+                q[self.pin_model.joints[joint_id].idx_q] = self.current_joint_positions[
+                    i
+                ]
             else:
                 self.get_logger().warn(
-                    f"Joint '{joint_name}' has nq={self.pin_model.joints[joint_id].nq}, nv={self.pin_model.joints[joint_id].nv}. Assuming simple assignment.",
+                    f"Joint '{joint_name}' has nq={self.pin_model.joints[joint_id].nq}, nv={self.pin_model.joints[joint_id].nv}. Using direct assignment to idx_q.",
                     throttle_duration_sec=5.0,
                 )
                 q_idx = self.pin_model.joints[joint_id].idx_q
@@ -1083,23 +1148,27 @@ class OrientationControl(Node):
             or self.tooltip_frame_id_pin < 0
         ):
             self.get_logger().error(
-                "Pinocchio model/data/frames not initialized for Jacobian in _calculate_joint_velocities_pinocchio_jacobian.",
+                "Pinocchio model/data/frames not initialized for Jacobian.",
                 throttle_duration_sec=1.0,
             )
             return None
         try:
-            pin.computeFrameJacobian(
+            # Ensure FK is up-to-date for this q_pin_config before Jacobian
+            pin.forwardKinematics(
+                self.pin_model, self.pin_data, q_pin_config
+            )  # Redundant if called just before, but safe
+            pin.updateFramePlacements(self.pin_model, self.pin_data)
+
+            # Compute Jacobian for the tooltip frame, expressed in LOCAL frame coordinates
+            J_tooltip_local_full = pin.computeFrameJacobian(
                 self.pin_model,
                 self.pin_data,
                 q_pin_config,
                 self.tooltip_frame_id_pin,
                 pin.ReferenceFrame.LOCAL,
             )
-            J_tooltip_local_full = pin.getFrameJacobian(
-                self.pin_model,
-                self.pin_data,
-                self.tooltip_frame_id_pin,
-                pin.ReferenceFrame.LOCAL,
+            self.get_logger().debug(
+                f"Full Jacobian J_tooltip_local_full (shape {J_tooltip_local_full.shape}):\n{J_tooltip_local_full}"
             )
 
             if (
@@ -1107,17 +1176,21 @@ class OrientationControl(Node):
                 or len(self.articutool_v_indices_pin) != 2
             ):
                 self.get_logger().error(
-                    "Pinocchio v_indices for Articutool joints not set up correctly."
+                    f"Pinocchio v_indices for Articutool joints not set up correctly: {self.articutool_v_indices_pin}"
                 )
                 return np.zeros(2)
 
+            # Extract columns for Articutool joints and rows for angular velocity
             J_tooltip_angular_local_articutool_joints = J_tooltip_local_full[
                 3:6, self.articutool_v_indices_pin
             ]
+            self.get_logger().debug(
+                f"Sliced Articutool Jacobian J_tooltip_angular_local_articutool_joints (shape {J_tooltip_angular_local_articutool_joints.shape}):\n{J_tooltip_angular_local_articutool_joints}"
+            )
 
             if J_tooltip_angular_local_articutool_joints.shape != (3, 2):
                 self.get_logger().error(
-                    f"Pinocchio Jacobian shape error: {J_tooltip_angular_local_articutool_joints.shape}. Expected (3,2)."
+                    f"Pinocchio Jacobian shape error after slicing: {J_tooltip_angular_local_articutool_joints.shape}. Expected (3,2)."
                 )
                 return np.zeros(2)
 
@@ -1126,8 +1199,9 @@ class OrientationControl(Node):
             ):
                 self.get_logger().warn(
                     "Pinocchio Jacobian for Articutool joints (angular part) is all zeros. Possible singularity or model issue.",
-                    throttle_duration_sec=2.0,
+                    throttle_duration_sec=1.0,
                 )
+                # If Jacobian is zero, pinv will be zero, dq_desired will be zero. This might be acceptable if omega is also zero.
 
             J_pinv = np.linalg.pinv(
                 J_tooltip_angular_local_articutool_joints,
