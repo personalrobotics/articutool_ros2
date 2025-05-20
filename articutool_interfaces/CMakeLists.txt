@@ -18,6 +18,7 @@ find_package(builtin_interfaces REQUIRED)
 set(interface_files
   "srv/SetOrientationControl.srv"
   "srv/TriggerCalibration.srv"
+  "msg/ImuCalibrationStatus.msg"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${interface_files}
