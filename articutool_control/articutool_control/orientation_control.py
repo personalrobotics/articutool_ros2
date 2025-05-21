@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Copyright (c) 2025, Personal Robotics Laboratory
 # License: BSD 3-Clause. See LICENSE.md file in root directory.
 
@@ -14,21 +16,16 @@ from geometry_msgs.msg import Quaternion, QuaternionStamped, Vector3
 from sensor_msgs.msg import Imu, JointState
 from std_msgs.msg import Float64MultiArray
 
-from articutool_interfaces.srv import SetOrientationControl, TriggerCalibration
+from articutool_interfaces.srv import SetOrientationControl
+from articutool_interfaces.msg import (
+    ImuCalibrationStatus,
+)
 
 import numpy as np
 import math
 from scipy.spatial.transform import Rotation as R
 import pinocchio as pin
 
-import tf2_ros
-from tf2_ros import (
-    Buffer,
-    TransformListener,
-    LookupException,
-    ConnectivityException,
-    ExtrapolationException,
-)
 
 import os
 import tempfile
@@ -60,47 +57,49 @@ class OrientationControl(Node):
         self._declare_parameters()
         self._load_parameters()
 
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-
-        # Pinocchio members will be initialized by _setup_pinocchio()
-        # They are primarily for MODE_FULL_ORIENTATION and calibration.
         self.pin_model: Optional[pin.Model] = None
         self.pin_data: Optional[pin.Data] = None
         self.imu_frame_id_pin: int = -1
         self.tooltip_frame_id_pin: int = -1
-        self.handle_frame_id_pin: int = -1
         self.articutool_joint_ids_pin: List[int] = []
         self.articutool_q_indices_pin: List[int] = []
         self.articutool_v_indices_pin: List[int] = []
-        self.R_handle_imu_pin: Optional[R] = None
-        self.R_imu_handle_pin: Optional[R] = None
 
         try:
             self._setup_pinocchio()
             self.get_logger().info("Pinocchio setup successful.")
         except Exception as e:
             self.get_logger().error(
-                f"Pinocchio setup failed: {e}. MODE_FULL_ORIENTATION and calibration may be unavailable.",
+                f"Pinocchio setup failed: {e}. MODE_FULL_ORIENTATION may be unavailable.",
             )
             self.pin_model = None
-            self.pin_data = None
-            self.R_imu_handle_pin = None
 
         self.current_mode = MODE_DISABLED
-        self.target_orientation_jacobase: Optional[R] = None
+        self.target_orientation_jacobase: Optional[R] = (
+            None  # For MODE_FULL_ORIENTATION
+        )
 
         # Offsets for MODE_LEVELING (stored in RADIANS)
         self.current_pitch_offset_leveling: float = 0.0
         self.current_roll_offset_leveling: float = 0.0
 
-        self.last_imu_msg_time: Optional[Time] = None
-        self.current_filterworld_to_imu_raw: Optional[R] = None
+        # Data from UNCALIBRATED IMU topic (for MODE_LEVELING and raw sensor values)
+        self.last_uncalibrated_imu_msg_time: Optional[Time] = None
+        self.current_filterworld_to_imu_raw: Optional[R] = (
+            None  # R_FilterWorld_to_IMUframe
+        )
         self.current_linear_accel_imu: Optional[np.ndarray] = None
         self.current_angular_velocity_imu: Optional[np.ndarray] = None
 
-        self.q_JacoBase_to_FilterWorld_cal: Optional[R] = None
-        self.is_calibrated = False
+        # Data from CALIBRATED IMU topic (for MODE_FULL_ORIENTATION)
+        self.last_calibrated_imu_msg_time: Optional[Time] = None
+        self.current_RobotBase_to_IMUframe_calibrated: Optional[R] = (
+            None  # R_RobotBase_to_IMUframe
+        )
+
+        # External calibration status
+        self.is_externally_calibrated: bool = False
+        self.last_external_calibration_time: Optional[Time] = None
 
         self.current_joint_positions: Optional[np.ndarray] = None
         self.last_error_leveling = np.zeros(3)
@@ -116,14 +115,25 @@ class OrientationControl(Node):
             "/articutool/set_orientation_control",
             self.set_orientation_control_callback,
         )
-        self.cal_srv = self.create_service(
-            TriggerCalibration,
-            "/articutool/trigger_orientation_calibration",
-            self.trigger_calibration_callback,
+
+        # Subscriber for UNCALIBRATED IMU data (e.g., from imu_filter_madgwick)
+        self.uncalibrated_imu_sub = self.create_subscription(
+            Imu, self.uncalibrated_imu_topic, self.uncalibrated_feedback_callback, 1
         )
-        self.imu_sub = self.create_subscription(
-            Imu, self.imu_topic, self.feedback_callback, 1
+        # Subscriber for CALIBRATED IMU data (from OrientationCalibrationService)
+        self.calibrated_imu_sub = self.create_subscription(
+            Imu, self.calibrated_imu_topic, self.calibrated_feedback_callback, 1
         )
+        # Subscriber for external calibration status
+        self.calibration_status_sub = self.create_subscription(
+            ImuCalibrationStatus,
+            self.calibration_status_topic,
+            self.calibration_status_callback,
+            rclpy.qos.QoSProfile(
+                depth=1, durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL
+            ),  # Get last status
+        )
+
         self.joint_state_sub = self.create_subscription(
             JointState, self.joint_state_topic, self.joint_state_callback, 10
         )
@@ -169,9 +179,23 @@ class OrientationControl(Node):
         self.declare_parameter("pid_gains.d", 0.01, d_gain_desc)
         self.declare_parameter("integral_clamp", 0.5, integral_clamp_desc)
         self.declare_parameter("loop_rate", 50.0, loop_rate_desc)
+
         self.declare_parameter(
-            "imu_topic", "/articutool/imu_data_and_orientation", string_desc
+            "uncalibrated_imu_topic",
+            "/articutool/imu_data_and_orientation",
+            string_desc,
         )
+        self.declare_parameter(
+            "calibrated_imu_topic",
+            "/articutool/imu_data_and_orientation_calibrated",
+            string_desc,
+        )
+        self.declare_parameter(
+            "calibration_status_topic",
+            "/orientation_calibration_service/status",
+            string_desc,
+        )  # Adjust default if needed
+
         self.declare_parameter(
             "command_topic", "/articutool/velocity_controller/commands", string_desc
         )
@@ -182,14 +206,16 @@ class OrientationControl(Node):
         self.declare_parameter("robot_base_frame", "j2n6s200_link_base", string_desc)
         self.declare_parameter(
             "articutool_base_link", "atool_handle", string_desc
-        )  # Frame F0 for analytic Jacobian
-        self.declare_parameter("imu_link_frame", "atool_imu_frame", string_desc)
+        )  # Frame F0 for analytic Jacobian, also Pinocchio
+        self.declare_parameter(
+            "imu_link_frame", "atool_imu_frame", string_desc
+        )  # For Pinocchio
         self.declare_parameter(
             "tooltip_frame", "tool_tip", string_desc
-        )  # Frame whose Y-axis (potentially offset) is controlled
+        )  # For Pinocchio
         self.declare_parameter(
             "joint_names", ["atool_joint1", "atool_joint2"], str_array_desc
-        )  # Pitch and Roll joints of Articutool
+        )
         self.declare_parameter(
             "joint_limits.lower", [-math.pi / 2.0, -math.pi], dbl_array_desc
         )
@@ -198,7 +224,7 @@ class OrientationControl(Node):
         )
         self.declare_parameter(
             "joint_limits.threshold",
-            0.1,  # Radians from limit to start dampening
+            0.1,
             ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
         )
         self.declare_parameter(
@@ -216,15 +242,20 @@ class OrientationControl(Node):
         )
         self.declare_parameter(
             "leveling_error_deadband_rad",
-            0.015,  # Radians, error below this is considered zero for leveling
+            0.015,
             ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
         )
         self.declare_parameter(
             "leveling_singularity_damp_power",
-            5.0,  # Power for singularity dampening factor
+            5.0,
+            ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE),
+        )
+        self.declare_parameter(
+            "max_time_since_last_calibration_sec",
+            30.0,
             ParameterDescriptor(
                 type=ParameterType.PARAMETER_DOUBLE,
-                description="Power for the singularity dampening curve. >1.0 dampens pitch cmd more aggressively as cos(roll) approaches 0.",
+                description="Max age of external calibration for FULL_ORIENTATION mode.",
             ),
         )
 
@@ -234,7 +265,13 @@ class OrientationControl(Node):
         self.Kd = self.get_parameter("pid_gains.d").value
         self.integral_max = self.get_parameter("integral_clamp").value
         self.rate = self.get_parameter("loop_rate").value
-        self.imu_topic = self.get_parameter("imu_topic").value
+
+        self.uncalibrated_imu_topic = self.get_parameter("uncalibrated_imu_topic").value
+        self.calibrated_imu_topic = self.get_parameter("calibrated_imu_topic").value
+        self.calibration_status_topic = self.get_parameter(
+            "calibration_status_topic"
+        ).value
+
         self.command_topic = self.get_parameter("command_topic").value
         self.joint_state_topic = self.get_parameter("joint_state_topic").value
         self.xacro_filename = self.get_parameter("urdf_path").value
@@ -274,11 +311,15 @@ class OrientationControl(Node):
         self.leveling_singularity_damp_power = self.get_parameter(
             "leveling_singularity_damp_power"
         ).value
+        self.max_time_since_last_calibration_sec = self.get_parameter(
+            "max_time_since_last_calibration_sec"
+        ).value
         self.get_logger().debug("Parameters loaded/reloaded.")
 
     def parameters_callback(self, params: List[Parameter]):
-        require_recalibration = False
         accepted_params_names = []
+        pinocchio_reload_needed = False
+
         for param in params:
             if param.name in [
                 "pid_gains.p",
@@ -291,11 +332,10 @@ class OrientationControl(Node):
                 "leveling_singularity_cos_roll_threshold",
                 "leveling_error_deadband_rad",
                 "leveling_singularity_damp_power",
+                "max_time_since_last_calibration_sec",
             ]:
                 accepted_params_names.append(param.name)
-            elif param.name == "robot_base_frame":
-                accepted_params_names.append(param.name)
-                require_recalibration = True
+            # Parameters affecting Pinocchio model or critical frame names
             elif param.name in [
                 "urdf_path",
                 "articutool_base_link",
@@ -304,7 +344,21 @@ class OrientationControl(Node):
                 "joint_names",
             ]:
                 self.get_logger().warn(
-                    f"Change to '{param.name}' typically requires node restart. Current Pinocchio model (if any) will NOT be reloaded dynamically."
+                    f"Change to '{param.name}' typically requires node restart for Pinocchio model to be reloaded. Current model (if any) will NOT be reloaded dynamically."
+                )
+                # If you want to attempt dynamic reload, set pinocchio_reload_needed = True
+                # and call _setup_pinocchio() again, but this is complex to do safely.
+            elif param.name in [
+                "uncalibrated_imu_topic",
+                "calibrated_imu_topic",
+                "calibration_status_topic",
+                "robot_base_frame",
+            ]:
+                accepted_params_names.append(
+                    param.name
+                )  # Allow topic/frame name changes, will require re-sub/re-init if implemented
+                self.get_logger().warn(
+                    f"Parameter '{param.name}' changed. If it's a topic, subscriptions might need to be recreated (not implemented dynamically)."
                 )
 
         if accepted_params_names:
@@ -317,20 +371,12 @@ class OrientationControl(Node):
                     self.get_logger().error(
                         "Loop rate zero/negative. Control loop stopped."
                     )
-            if require_recalibration:
-                self.is_calibrated = False
-                self.q_JacoBase_to_FilterWorld_cal = None
-                self.get_logger().warn(
-                    "Recalibration is required due to parameter change (e.g., robot_base_frame)."
-                )
-                if self.current_mode == MODE_FULL_ORIENTATION:
-                    self.get_logger().error(
-                        "Disabling FULL_ORIENTATION mode due to required recalibration."
-                    )
-                    self.current_mode = MODE_DISABLED
-                    self._publish_zero_command()
+            # If topic names changed, one would ideally destroy and recreate subscribers.
+            # For simplicity, this example doesn't do that dynamically.
             return SetParametersResult(successful=True)
-        return SetParametersResult(successful=False)
+        return SetParametersResult(
+            successful=False
+        )  # If no accepted params were changed
 
     def _setup_pinocchio(self):
         if not self.xacro_filename:
@@ -378,103 +424,47 @@ class OrientationControl(Node):
                 f"Pinocchio model loaded: {self.pin_model.name}, Nq={self.pin_model.nq}, Nv={self.pin_model.nv}"
             )
 
-            self.handle_frame_id_pin = self.pin_model.getFrameId(
-                self.articutool_base_link_name
-            )
-            self.imu_frame_id_pin = self.pin_model.getFrameId(self.imu_link_name)
-            self.tooltip_frame_id_pin = self.pin_model.getFrameId(
-                self.tooltip_link_name
-            )
-
-            q_neutral = pin.neutral(self.pin_model)
-            pin.forwardKinematics(self.pin_model, self.pin_data, q_neutral)
-            pin.updateFramePlacements(self.pin_model, self.pin_data)
-
-            T_pinworld_handle = self.pin_data.oMf[self.handle_frame_id_pin]
-            T_pinworld_imu = self.pin_data.oMf[self.imu_frame_id_pin]
-            T_handle_imu_se3 = T_pinworld_handle.inverse() * T_pinworld_imu
-            self.R_handle_imu_pin = R.from_matrix(T_handle_imu_se3.rotation)
-            self.R_imu_handle_pin = self.R_handle_imu_pin.inv()
-            self.get_logger().info(
-                f"Pinocchio-derived R_handle_imu_pin (Handle to IMU, xyzw): {self.R_handle_imu_pin.as_quat()}"
-            )
-            self.get_logger().info(
-                f"Pinocchio model has {self.pin_model.nframes} frames and {self.pin_model.njoints} joints (including universe)."
-            )
-
-            # Log details about key frames
-            for frame_name_attr, frame_id_attr_str in [
-                ("articutool_base_link_name", "handle_frame_id_pin"),
-                ("imu_link_name", "imu_frame_id_pin"),
-                ("tooltip_link_name", "tooltip_frame_id_pin"),
-            ]:
-                link_name = getattr(self, frame_name_attr)
-                if self.pin_model.existFrame(link_name):
-                    frame_id = self.pin_model.getFrameId(link_name)
-                    setattr(self, frame_id_attr_str, frame_id)
-                    frame_obj = self.pin_model.frames[frame_id]
-                    parent_joint_id = frame_obj.parentJoint
-                    parent_joint_name = self.pin_model.names[parent_joint_id]
-                    self.get_logger().info(
-                        f"Pinocchio: Frame '{link_name}' (ID {frame_id}) is attached to JOINT '{parent_joint_name}' (ID {parent_joint_id}). "
-                        f"Its placement is w.r.t this joint. Previous frame ID: {frame_obj.previousFrame}."
-                    )
-                    if parent_joint_id == 0:  # Universe joint
-                        self.get_logger().warn(
-                            f"Pinocchio: Frame '{link_name}' appears to be attached to Universe (joint 0). This might be unexpected depending on URDF structure."
-                        )
-                else:
-                    self.get_logger().error(
-                        f"Pinocchio: Frame '{link_name}' not found in model!"
-                    )
-                    self.pin_model = None
-                    return
-
-            # Calculate and log T_handle_imu for verification
-            if self.handle_frame_id_pin != -1 and self.imu_frame_id_pin != -1:
-                q_neutral = pin.neutral(self.pin_model)
-                pin.forwardKinematics(self.pin_model, self.pin_data, q_neutral)
-                pin.updateFramePlacements(self.pin_model, self.pin_data)
-                T_pinworld_handle = self.pin_data.oMf[self.handle_frame_id_pin]
-                T_pinworld_imu = self.pin_data.oMf[self.imu_frame_id_pin]
-                self.get_logger().info(
-                    f"Pinocchio T_world_handle @ neutral q:\n{T_pinworld_handle}"
+            # Get frame IDs crucial for control
+            if self.pin_model.existFrame(self.imu_link_name):
+                self.imu_frame_id_pin = self.pin_model.getFrameId(self.imu_link_name)
+            else:
+                self.get_logger().error(
+                    f"Pinocchio: IMU frame '{self.imu_link_name}' not found!"
                 )
-                self.get_logger().info(
-                    f"Pinocchio T_world_imu @ neutral q:\n{T_pinworld_imu}"
+                self.pin_model = None
+                return
+
+            if self.pin_model.existFrame(self.tooltip_link_name):
+                self.tooltip_frame_id_pin = self.pin_model.getFrameId(
+                    self.tooltip_link_name
                 )
+            else:
+                self.get_logger().error(
+                    f"Pinocchio: Tooltip frame '{self.tooltip_link_name}' not found!"
+                )
+                self.pin_model = None
+                return
 
-                if T_pinworld_handle.rotation.trace() > -0.99999:
-                    T_handle_imu_se3 = T_pinworld_handle.inverse() * T_pinworld_imu
-                    self.R_handle_imu_pin = R.from_matrix(T_handle_imu_se3.rotation)
-                    self.R_imu_handle_pin = self.R_handle_imu_pin.inv()
-                    self.get_logger().info(
-                        f"Pinocchio-derived R_handle_imu_pin (Handle to IMU, xyzw): {self.R_handle_imu_pin.as_quat()}"
-                    )
-                    self.get_logger().info(
-                        f"Pinocchio-derived T_handle_imu translation: {T_handle_imu_se3.translation.flatten()}"
-                    )
+            # TODO: The R_handle_imu_pin calculation might be removable if not used elsewhere.
+            # For now, keeping it to minimize changes, but flag for review.
 
-                    # Compare with hardcoded
-                    if self.R_imu_handle_pin is not None:
-                        diff_rot = (
-                            self.R_IMU_TO_HANDLE_FIXED_SCIPY
-                            * self.R_imu_handle_pin.inv()
-                        )
-                        angle_diff = diff_rot.magnitude()
-                        self.get_logger().info(
-                            f"Angle difference between hardcoded R_IMU_Handle and Pinocchio R_IMU_Handle: {math.degrees(angle_diff):.3f} deg"
-                        )
-                        if angle_diff > 0.1:
-                            self.get_logger().warn(
-                                "Significant difference in R_IMU_Handle between hardcoded and Pinocchio."
-                            )
-                else:
-                    self.get_logger().error(
-                        "Could not compute T_handle_imu_se3 due to invalid T_pinworld_handle."
-                    )
-                    self.pin_model = None
-                    return
+            # if self.pin_model.existFrame(self.articutool_base_link_name):
+            #     handle_frame_id = self.pin_model.getFrameId(self.articutool_base_link_name)
+            #     q_neutral = pin.neutral(self.pin_model)
+            #     pin.forwardKinematics(self.pin_model, self.pin_data, q_neutral)
+            #     pin.updateFramePlacements(self.pin_model, self.pin_data)
+            #     T_pinworld_handle = self.pin_data.oMf[handle_frame_id]
+            #     T_pinworld_imu = self.pin_data.oMf[self.imu_frame_id_pin]
+            #     if T_pinworld_handle.rotation.trace() > -0.99999: # Check valid rotation
+            #        T_handle_imu_se3 = T_pinworld_handle.inverse() * T_pinworld_imu
+            #        # self.R_handle_imu_pin = R.from_matrix(T_handle_imu_se3.rotation) # Store if needed
+            #        # self.R_imu_handle_pin = self.R_handle_imu_pin.inv() # Store if needed
+            #        # self.get_logger().info(f"Pinocchio-derived R_handle_imu (xyzw): {self.R_handle_imu_pin.as_quat()}")
+            #     else:
+            #        self.get_logger().error("Could not compute T_handle_imu_se3 due to invalid T_pinworld_handle.")
+            # else:
+            #     self.get_logger().error(f"Pinocchio: Handle frame '{self.articutool_base_link_name}' not found!")
+            #     self.pin_model = None; return
 
             self.articutool_joint_ids_pin = []
             self.articutool_q_indices_pin = []
@@ -487,17 +477,6 @@ class OrientationControl(Node):
                     self.pin_model = None
                     return
                 joint_id = self.pin_model.getJointId(joint_name)
-                joint_type = self.pin_model.joints[joint_id].shortname()
-                self.get_logger().info(
-                    f"Articutool Pinocchio joint: '{joint_name}' (ID: {joint_id}, Type: {joint_type}, "
-                    f"nq: {self.pin_model.joints[joint_id].nq}, nv: {self.pin_model.joints[joint_id].nv}, "
-                    f"idx_q: {self.pin_model.joints[joint_id].idx_q}, idx_v: {self.pin_model.joints[joint_id].idx_v})"
-                )
-                if self.pin_model.joints[joint_id].nv == 0:
-                    self.get_logger().warn(
-                        f"Articutool joint '{joint_name}' has nv=0 (no velocity DoFs)! This will lead to zero Jacobian columns."
-                    )
-
                 self.articutool_joint_ids_pin.append(joint_id)
                 self.articutool_q_indices_pin.append(
                     self.pin_model.joints[joint_id].idx_q
@@ -513,7 +492,6 @@ class OrientationControl(Node):
         except Exception as e:
             self.get_logger().error(f"Pinocchio setup failed: {e}.")
             self.pin_model = None
-            self.R_imu_handle_pin = None
         finally:
             if temp_urdf_path and os.path.exists(temp_urdf_path):
                 try:
@@ -540,10 +518,8 @@ class OrientationControl(Node):
             response.success = True
             response.message = "Orientation control disabled."
         elif request.control_mode == MODE_LEVELING:
-            # Convert incoming degree offsets to radians for internal use
             pitch_offset_rad = math.radians(request.pitch_offset)
             roll_offset_rad = math.radians(request.roll_offset)
-
             offsets_changed = (
                 abs(self.current_pitch_offset_leveling - pitch_offset_rad)
                 > self.EPSILON
@@ -552,14 +528,11 @@ class OrientationControl(Node):
             )
             if self.current_mode != MODE_LEVELING or offsets_changed:
                 self.get_logger().info(
-                    f"{'Switching to' if self.current_mode != MODE_LEVELING else 'Updating'} LEVELING mode. "
-                    f"Pitch Offset: {request.pitch_offset:.2f} deg ({pitch_offset_rad:.3f} rad), "
-                    f"Roll Offset: {request.roll_offset:.2f} deg ({roll_offset_rad:.3f} rad)"
+                    f"{'Switching to' if self.current_mode != MODE_LEVELING else 'Updating'} LEVELING mode."
                 )
                 self._reset_pid_for_mode(MODE_LEVELING)
-
-            self.current_pitch_offset_leveling = pitch_offset_rad  # Store in radians
-            self.current_roll_offset_leveling = roll_offset_rad  # Store in radians
+            self.current_pitch_offset_leveling = pitch_offset_rad
+            self.current_roll_offset_leveling = roll_offset_rad
             self.current_mode = MODE_LEVELING
             response.success = True
             response.message = "Leveling mode (analytic Jacobian with offsets) enabled."
@@ -568,136 +541,66 @@ class OrientationControl(Node):
             if self.pin_model is None:
                 response.message = "Cannot enable FULL_ORIENTATION: Pinocchio model not loaded/failed to load."
                 self.get_logger().error(response.message)
-                if self.current_mode != MODE_DISABLED:
-                    self._publish_zero_command()
-                self.current_mode = MODE_DISABLED
-                return response
-            if not self.is_calibrated:
+            elif not self.is_externally_calibrated:
                 response.message = (
-                    "Cannot enable FULL_ORIENTATION: System not calibrated."
+                    "Cannot enable FULL_ORIENTATION: System not externally calibrated."
                 )
                 self.get_logger().error(response.message)
-                if self.current_mode != MODE_DISABLED:
-                    self._publish_zero_command()
-                self.current_mode = MODE_DISABLED
-                return response
-            try:
-                target_q_msg = request.target_orientation_robot_base
-                new_target = R.from_quat(
-                    [target_q_msg.x, target_q_msg.y, target_q_msg.z, target_q_msg.w]
+            elif (
+                self.last_external_calibration_time is not None
+                and (
+                    self.get_clock().now() - self.last_external_calibration_time
+                ).nanoseconds
+                / 1e9
+                > self.max_time_since_last_calibration_sec
+            ):
+                response.message = (
+                    f"Cannot enable FULL_ORIENTATION: External calibration is too old "
+                    f"(> {self.max_time_since_last_calibration_sec}s). Please re-calibrate."
                 )
-                target_changed = (
-                    self.target_orientation_jacobase is None
-                    or not np.allclose(
-                        new_target.as_quat(),
-                        self.target_orientation_jacobase.as_quat(),
-                        atol=1e-6,
-                    )
-                )
-                if self.current_mode != MODE_FULL_ORIENTATION or target_changed:
-                    self.get_logger().info(
-                        f"{'Switching to' if self.current_mode != MODE_FULL_ORIENTATION else 'Updating'} FULL_ORIENTATION mode target."
-                    )
-                    self._reset_pid_for_mode(MODE_FULL_ORIENTATION)
-                self.target_orientation_jacobase = new_target
-                self.current_mode = MODE_FULL_ORIENTATION
-                response.success = True
-                response.message = "Full orientation mode enabled/updated."
-            except Exception as e:
-                response.message = f"Error setting target for Full Orientation: {e}"
                 self.get_logger().error(response.message)
-                if self.current_mode != MODE_DISABLED:
-                    self._publish_zero_command()
-                self.current_mode = MODE_DISABLED
-                return response
+                self.is_externally_calibrated = False  # Mark as uncalibrated if too old
+            else:
+                try:
+                    target_q_msg = request.target_orientation_robot_base
+                    new_target = R.from_quat(
+                        [target_q_msg.x, target_q_msg.y, target_q_msg.z, target_q_msg.w]
+                    )
+                    target_changed = (
+                        self.target_orientation_jacobase is None
+                        or not np.allclose(
+                            new_target.as_quat(),
+                            self.target_orientation_jacobase.as_quat(),
+                            atol=1e-6,
+                        )
+                    )
+                    if self.current_mode != MODE_FULL_ORIENTATION or target_changed:
+                        self.get_logger().info(
+                            f"{'Switching to' if self.current_mode != MODE_FULL_ORIENTATION else 'Updating'} FULL_ORIENTATION mode target."
+                        )
+                        self._reset_pid_for_mode(MODE_FULL_ORIENTATION)
+                    self.target_orientation_jacobase = new_target
+                    self.current_mode = MODE_FULL_ORIENTATION
+                    response.success = True
+                    response.message = "Full orientation mode enabled/updated."
+                except Exception as e:
+                    response.message = f"Error setting target for Full Orientation: {e}"
+                    self.get_logger().error(response.message)
+
+            if (
+                not response.success and self.current_mode != MODE_DISABLED
+            ):  # If any check failed for FULL_ORIENT
+                self._publish_zero_command()
+                self.current_mode = MODE_DISABLED  # Fallback to disabled
         else:
             response.message = f"Invalid control_mode: {request.control_mode}"
             self.get_logger().error(response.message)
-            return response
+
         return response
 
-    def trigger_calibration_callback(
-        self, request: TriggerCalibration.Request, response: TriggerCalibration.Response
-    ):
-        self.get_logger().info(
-            "Calibration triggered. Ensure robot and Articutool base are STATIONARY."
-        )
-        self.is_calibrated = False
-        self.q_JacoBase_to_FilterWorld_cal = None
-        response.success = False
-
-        if self.current_filterworld_to_imu_raw is None:
-            response.message = "Cannot calibrate: No IMU data."
-            self.get_logger().error(response.message)
-            return response
-
-        R_imu_handle_to_use: Optional[R] = None
-        source_msg = ""
-        if self.R_imu_handle_pin is not None:
-            R_imu_handle_to_use = self.R_imu_handle_pin
-            source_msg = "Pinocchio-derived"
-        else:
-            R_imu_handle_to_use = self.R_IMU_TO_HANDLE_FIXED_SCIPY
-            source_msg = "hardcoded URDF-based"
-            self.get_logger().warn(
-                "Calibration using hardcoded R_IMU_TO_HANDLE_FIXED_SCIPY as Pinocchio version is unavailable."
-            )
-
-        if R_imu_handle_to_use is None:
-            response.message = (
-                "Cannot calibrate: R_imu_handle not available from any source."
-            )
-            self.get_logger().error(response.message)
-            return response
-
-        try:
-            transform_jb_handle = self.tf_buffer.lookup_transform(
-                self.robot_base_frame,
-                self.articutool_base_link_name,
-                rclpy.time.Time(seconds=0),
-                timeout=RCLPYDuration(seconds=1.0),
-            )
-            q_jb_handle_tf = R.from_quat(
-                [
-                    transform_jb_handle.transform.rotation.x,
-                    transform_jb_handle.transform.rotation.y,
-                    transform_jb_handle.transform.rotation.z,
-                    transform_jb_handle.transform.rotation.w,
-                ]
-            )
-            q_fw_imu = self.current_filterworld_to_imu_raw
-            q_imu_handle = R_imu_handle_to_use
-
-            q_fw_handle = q_fw_imu * q_imu_handle
-            self.q_JacoBase_to_FilterWorld_cal = q_jb_handle_tf * q_fw_handle.inv()
-
-            self.is_calibrated = True
-            response.success = True
-            response.message = (
-                f"Calibration successful (using {source_msg} R_imu_handle)."
-            )
-            cal_quat_msg = self.q_JacoBase_to_FilterWorld_cal.as_quat()
-            (
-                response.computed_offset_jacobase_to_filterworld.x,
-                response.computed_offset_jacobase_to_filterworld.y,
-                response.computed_offset_jacobase_to_filterworld.z,
-                response.computed_offset_jacobase_to_filterworld.w,
-            ) = cal_quat_msg
-            self.get_logger().info(
-                f"{response.message} R_JacoBase_FilterWorld (xyzw): {cal_quat_msg}"
-            )
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-            response.message = f"Calibration failed: TF lookup error for '{self.robot_base_frame}' to '{self.articutool_base_link_name}': {e}"
-            self.get_logger().error(response.message)
-        except Exception as e:
-            response.message = f"Calibration failed with an unexpected error: {e}"
-            self.get_logger().error(response.message)
-            self.is_calibrated = False
-            self.q_JacoBase_to_FilterWorld_cal = None
-        return response
-
-    def feedback_callback(self, msg: Imu):
-        self.last_imu_msg_time = Time.from_msg(msg.header.stamp)
+    def uncalibrated_feedback_callback(self, msg: Imu):
+        """Handles IMU data from the uncalibrated (FilterWorld-relative) topic."""
+        self.last_uncalibrated_imu_msg_time = Time.from_msg(msg.header.stamp)
         is_valid_quat = not (
             math.isnan(msg.orientation.w)
             or (
@@ -716,10 +619,12 @@ class OrientationControl(Node):
                     msg.orientation.w,
                 ]
             )
-        elif self.current_filterworld_to_imu_raw is None:
+        elif (
+            self.current_filterworld_to_imu_raw is None
+        ):  # Only log if it was never valid
             self.get_logger().warn(
-                "Received zero or NaN quaternion from IMU filter. Waiting for valid data.",
-                throttle_duration_sec=5.0,
+                "Received zero or NaN quaternion from UNCALIBRATED IMU. Waiting for valid data.",
+                throttle_duration_sec=1.0,
             )
 
         self.current_linear_accel_imu = np.array(
@@ -732,6 +637,61 @@ class OrientationControl(Node):
         self.current_angular_velocity_imu = np.array(
             [msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z]
         )
+
+    def calibrated_feedback_callback(self, msg: Imu):
+        """Handles IMU data from the CALIBRATED (RobotBase-relative) topic."""
+        self.last_calibrated_imu_msg_time = Time.from_msg(msg.header.stamp)
+        is_valid_quat = not (
+            math.isnan(msg.orientation.w)
+            or (
+                abs(msg.orientation.w) < self.EPSILON
+                and abs(msg.orientation.x) < self.EPSILON
+                and abs(msg.orientation.y) < self.EPSILON
+                and abs(msg.orientation.z) < self.EPSILON
+            )
+        )
+        if is_valid_quat:
+            self.current_RobotBase_to_IMUframe_calibrated = R.from_quat(
+                [
+                    msg.orientation.x,
+                    msg.orientation.y,
+                    msg.orientation.z,
+                    msg.orientation.w,
+                ]
+            )
+        elif (
+            self.current_RobotBase_to_IMUframe_calibrated is None
+        ):  # Only log if it was never valid
+            self.get_logger().warn(
+                "Received zero or NaN quaternion from CALIBRATED IMU. Waiting for valid data.",
+                throttle_duration_sec=1.0,
+            )
+        # Note: Linear accel and angular velocity from this topic are not explicitly stored separately here,
+        # assuming the uncalibrated topic's values are sufficient for raw sensor data needs.
+
+    def calibration_status_callback(self, msg: ImuCalibrationStatus):
+        """Handles updates on the external calibration status."""
+        status_changed = self.is_externally_calibrated != msg.is_yaw_calibrated
+        self.is_externally_calibrated = msg.is_yaw_calibrated
+        self.last_external_calibration_time = Time.from_msg(
+            msg.last_yaw_calibration_time
+        )
+
+        if status_changed:
+            self.get_logger().info(
+                f"External calibration status changed. Calibrated: {self.is_externally_calibrated}"
+            )
+
+        if (
+            not self.is_externally_calibrated
+            and self.current_mode == MODE_FULL_ORIENTATION
+        ):
+            self.get_logger().error(
+                "External calibration lost! Disabling FULL_ORIENTATION mode."
+            )
+            self.current_mode = MODE_DISABLED
+            self._publish_zero_command()
+            self._reset_pid_for_mode(MODE_FULL_ORIENTATION)  # Reset PID for this mode
 
     def joint_state_callback(self, msg: JointState):
         if self.current_joint_positions is None:
@@ -754,24 +714,42 @@ class OrientationControl(Node):
         if dt <= 1e-9:
             return
 
-        if (
-            self.current_filterworld_to_imu_raw is None
-            or self.current_joint_positions is None
-        ):
-            if self.current_mode != MODE_DISABLED:
-                self.get_logger().warn(
-                    f"Mode {self.current_mode}: Prerequisites (IMU/Joints) not met. Commanding zero.",
-                    throttle_duration_sec=1.0,
-                )
-                self._publish_zero_command()
-            return
+        # Prerequisites for MODE_LEVELING: uncalibrated IMU orientation and joint states
+        mode_leveling_ready = (
+            self.current_filterworld_to_imu_raw is not None
+            and self.current_joint_positions is not None
+        )
 
-        mode_leveling_ready = True
+        # Prerequisites for MODE_FULL_ORIENTATION: Pinocchio, external calibration, target, calibrated IMU orientation, and joint states
+        is_calibration_fresh = True
+        if (
+            self.is_externally_calibrated
+            and self.last_external_calibration_time is not None
+        ):
+            if (
+                now - self.last_external_calibration_time
+            ).nanoseconds / 1e9 > self.max_time_since_last_calibration_sec:
+                is_calibration_fresh = False
+                if (
+                    self.current_mode == MODE_FULL_ORIENTATION
+                ):  # Log if actively in this mode and cal becomes stale
+                    self.get_logger().warn(
+                        "External calibration is too old for FULL_ORIENTATION mode.",
+                        throttle_duration_sec=1.0,
+                    )
+        elif (
+            self.is_externally_calibrated
+            and self.last_external_calibration_time is None
+        ):  # Calibrated but no timestamp? Should not happen.
+            is_calibration_fresh = False
 
         mode_full_orientation_ready = (
             self.pin_model is not None
-            and self.is_calibrated
+            and self.is_externally_calibrated
+            and is_calibration_fresh  # Check freshness
             and self.target_orientation_jacobase is not None
+            and self.current_RobotBase_to_IMUframe_calibrated is not None
+            and self.current_joint_positions is not None
         )
 
         if self.current_mode == MODE_DISABLED:
@@ -786,7 +764,7 @@ class OrientationControl(Node):
                     )
                 else:
                     self.get_logger().warn(
-                        "MODE_LEVELING: Prerequisites not met (IMU/Joints). Commanding zero.",
+                        "MODE_LEVELING: Prerequisites (Uncalibrated IMU/Joints) not met. Commanding zero.",
                         throttle_duration_sec=1.0,
                     )
             elif self.current_mode == MODE_FULL_ORIENTATION:
@@ -794,24 +772,38 @@ class OrientationControl(Node):
                     commanded_dq = self._calculate_full_orientation_control(dt)
                 else:
                     self.get_logger().warn(
-                        "MODE_FULL_ORIENTATION: Prerequisites not met (Pinocchio/Calibration/Target). Commanding zero.",
+                        "MODE_FULL_ORIENTATION: Prerequisites (Pinocchio/ExternalCalib/Target/CalibratedIMU/Joints) not met. Commanding zero.",
                         throttle_duration_sec=1.0,
                     )
 
             if commanded_dq is not None:
                 self._publish_command(commanded_dq)
-            else:
+            else:  # If a mode was active but prerequisites failed, or calculation failed
                 self._publish_zero_command()
         except Exception as e:
             self.get_logger().error(
-                f"Unhandled exception in control_loop (Mode: {self.current_mode}): {e}",
+                f"Unhandled exception in control_loop (Mode: {self.current_mode}): {e}"
             )
+            import traceback
+
+            self.get_logger().error(traceback.format_exc())
             self._publish_zero_command()
 
     def _calculate_leveling_control_analytic_jacobian(
         self, dt: float
     ) -> Optional[np.ndarray]:
+        # This method should use self.current_filterworld_to_imu_raw (R_FilterWorld_to_IMUframe)
+        # The logic remains largely the same as it was, as it operates on FilterWorld-relative orientation.
+        if (
+            self.current_filterworld_to_imu_raw is None
+            or self.current_joint_positions is None
+        ):  # Defensive check
+            return None
         try:
+            # ... (The existing logic for leveling using self.current_filterworld_to_imu_raw,
+            #      self.R_IMU_TO_HANDLE_FIXED_SCIPY, and current_joint_positions) ...
+            # For brevity, not repeating the entire block, assume it's the same as original.
+            # Ensure it uses self.current_filterworld_to_imu_raw for R_FilterW_F0 calculation.
             theta_p_curr = self.current_joint_positions[0]
             theta_r_curr = self.current_joint_positions[1]
 
@@ -853,7 +845,7 @@ class OrientationControl(Node):
                 error_vec_FilterW = np.zeros(3)
             elif norm_axis_err_val > self.EPSILON:
                 error_vec_FilterW = (axis_err_FilterW / norm_axis_err_val) * angle_err
-            elif dot_prod < (-1.0 + self.EPSILON):
+            elif dot_prod < (-1.0 + self.EPSILON):  # 180 deg error
                 arbitrary_axis = np.array([1.0, 0.0, 0.0])
                 if (
                     np.linalg.norm(np.cross(y_eff_in_FilterW_curr, arbitrary_axis))
@@ -866,7 +858,9 @@ class OrientationControl(Node):
                         rotation_axis / np.linalg.norm(rotation_axis)
                     ) * math.pi
                 else:
-                    error_vec_FilterW = np.array([math.pi, 0.0, 0.0])
+                    error_vec_FilterW = np.array(
+                        [math.pi, 0.0, 0.0]
+                    )  # Should not happen if y_eff not zero
 
             if np.allclose(error_vec_FilterW, 0.0):
                 omega_corr_FilterW = np.zeros(3)
@@ -875,16 +869,16 @@ class OrientationControl(Node):
                 self.integral_error_leveling = np.clip(
                     self.integral_error_leveling, -self.integral_max, self.integral_max
                 )
-            derivative_error = (
-                (error_vec_FilterW - self.last_error_leveling) / dt
-                if dt > self.EPSILON
-                else np.zeros(3)
-            )
-            omega_corr_FilterW = (
-                self.Kp * error_vec_FilterW
-                + self.Ki * self.integral_error_leveling
-                + self.Kd * derivative_error
-            )
+                derivative_error = (
+                    (error_vec_FilterW - self.last_error_leveling) / dt
+                    if dt > self.EPSILON
+                    else np.zeros(3)
+                )
+                omega_corr_FilterW = (
+                    self.Kp * error_vec_FilterW
+                    + self.Ki * self.integral_error_leveling
+                    + self.Kd * derivative_error
+                )
             self.last_error_leveling = np.copy(error_vec_FilterW)
 
             omega_corr_in_F0 = R_FilterW_F0.inv().apply(omega_corr_FilterW)
@@ -922,91 +916,87 @@ class OrientationControl(Node):
             )
             dq_calculated = J_eff_in_F0_pinv @ desired_y_eff_linear_velocity_in_F0
 
-            pitch_singularity_scale = 1.0
+            pitch_singularity_scale = 1.0  # Singularity dampening logic
             abs_cr = abs(cr)
             effective_singularity_threshold = max(
                 self.leveling_singularity_cos_roll_threshold, self.EPSILON
             )
             if abs_cr < effective_singularity_threshold:
                 normalized_cr_for_scaling = abs_cr / effective_singularity_threshold
-                if normalized_cr_for_scaling >= 0:
-                    pitch_singularity_scale = (
-                        normalized_cr_for_scaling**self.leveling_singularity_damp_power
-                    )
-                else:
-                    pitch_singularity_scale = 0.0
-                pitch_singularity_scale = np.clip(pitch_singularity_scale, 0.0, 1.0)
+                pitch_singularity_scale = (
+                    np.clip(normalized_cr_for_scaling, 0.0, 1.0)
+                    ** self.leveling_singularity_damp_power
+                )
                 if pitch_singularity_scale < 0.99:
                     self.get_logger().warn(
-                        f"Pitch singularity dampening: |cos(roll_joint)|={abs_cr:.4f} (thresh={effective_singularity_threshold:.4f}), "
-                        f"scale={pitch_singularity_scale:.4f}. Pitch dq: {dq_calculated[0]:.4f} -> {dq_calculated[0] * pitch_singularity_scale:.4f}",
+                        f"Pitch singularity damp: scale={pitch_singularity_scale:.3f}",
                         throttle_duration_sec=1.0,
                     )
                 dq_calculated[0] *= pitch_singularity_scale
 
-            final_dq_desired = self._dampen_velocities_near_limits(
+            return self._dampen_velocities_near_limits(
                 self.current_joint_positions, dq_calculated
             )
-            return final_dq_desired
 
         except Exception as e:
-            self.get_logger().error(
-                f"Error in Analytic Jacobian Leveling Control (with offsets): {e}"
-            )
+            self.get_logger().error(f"Error in Analytic Jacobian Leveling Control: {e}")
             import traceback
 
             self.get_logger().error(traceback.format_exc())
             return np.zeros(len(self.articutool_joint_names))
 
     def _calculate_full_orientation_control(self, dt: float) -> Optional[np.ndarray]:
-        if self.pin_model is None or self.R_imu_handle_pin is None:
+        # This method now uses self.current_RobotBase_to_IMUframe_calibrated
+        if self.pin_model is None:
             self.get_logger().error(
-                "Full Orientation: Pinocchio model or R_imu_handle_pin not available.",
-                throttle_duration_sec=1.0,
+                "Full Orient: Pinocchio model NA", throttle_duration_sec=1.0
             )
             return None
-        if not self.is_calibrated or self.q_JacoBase_to_FilterWorld_cal is None:
+        if not self.is_externally_calibrated:
             self.get_logger().error(
-                "Full Orientation: Not calibrated!", throttle_duration_sec=1.0
+                "Full Orient: Not externally calibrated!", throttle_duration_sec=1.0
             )
             return None
         if self.target_orientation_jacobase is None:
+            self.get_logger().warn("Full Orient: Target NA", throttle_duration_sec=1.0)
+            return None
+        if self.current_RobotBase_to_IMUframe_calibrated is None:
             self.get_logger().warn(
-                "Full Orientation: Target not set.", throttle_duration_sec=1.0
+                "Full Orient: Calibrated IMU data NA", throttle_duration_sec=1.0
             )
             return None
-        if (
-            self.current_filterworld_to_imu_raw is None
-            or self.current_joint_positions is None
-        ):
+        if self.current_joint_positions is None:
             self.get_logger().warn(
-                "Full Orientation: IMU or Joint states missing.",
-                throttle_duration_sec=1.0,
+                "Full Orient: Joint states NA", throttle_duration_sec=1.0
             )
             return None
 
         try:
-            q_jb_fw_cal = self.q_JacoBase_to_FilterWorld_cal
-            q_fw_imu_raw = self.current_filterworld_to_imu_raw
-            q_jb_imu = q_jb_fw_cal * q_fw_imu_raw
+            # Current orientation of IMU frame in JacoBase frame (already calibrated)
+            q_jb_imu = self.current_RobotBase_to_IMUframe_calibrated
 
             q_pin_config = self._get_pinocchio_config()
-            q_imu_tooltip_current_pin = self._get_pinocchio_imu_tooltip_orientation(
+            R_imu_tooltip_current_pin = self._get_pinocchio_imu_tooltip_orientation(
                 q_pin_config
-            )
-            if q_imu_tooltip_current_pin is None:
+            )  # R_IMUframe_to_ToolTip
+            if R_imu_tooltip_current_pin is None:
                 self.get_logger().error(
-                    "Full Orientation: Failed to get R_IMU_Tooltip from Pinocchio."
+                    "Full Orient: Failed to get R_IMU_Tooltip from Pinocchio."
                 )
                 return None
 
-            q_jb_tooltip_current = q_jb_imu * q_imu_tooltip_current_pin
+            # Current orientation of ToolTip frame in JacoBase frame
+            q_jb_tooltip_current = (
+                q_jb_imu * R_imu_tooltip_current_pin
+            )  # R_JacoBase_to_ToolTip
 
+            # Error calculation
             q_error_jacobase = (
                 self.target_orientation_jacobase * q_jb_tooltip_current.inv()
             )
             error_vec_jacobase = q_error_jacobase.as_rotvec()
 
+            # PID
             self.integral_error_full_orientation += error_vec_jacobase * dt
             self.integral_error_full_orientation = np.clip(
                 self.integral_error_full_orientation,
@@ -1025,6 +1015,7 @@ class OrientationControl(Node):
             )
             self.last_error_full_orientation = np.copy(error_vec_jacobase)
 
+            # Transform desired angular velocity from JacoBase frame to ToolTip's local frame
             omega_desired_tooltip_local = q_jb_tooltip_current.inv().apply(
                 omega_desired_jacobase
             )
@@ -1034,25 +1025,16 @@ class OrientationControl(Node):
             )
             if dq_desired is None:
                 self.get_logger().error(
-                    "Full Orientation: Failed to calculate joint velocities from Pinocchio Jacobian."
+                    "Full Orient: Failed to calculate joint velocities from Pinocchio Jacobian."
                 )
                 return None
 
-            if (
-                self.get_logger().get_effective_level()
-                <= rclpy.logging.LoggingSeverity.DEBUG
-            ):
-                self.get_logger().debug(
-                    f"FullOrient Ctrl: err_norm={np.linalg.norm(error_vec_jacobase):.3f}, "
-                    f"omega_des_L={np.round(omega_desired_tooltip_local, 3)}, "
-                    f"dq_des={np.round(dq_desired, 3)}"
-                )
             return self._dampen_velocities_near_limits(
                 self.current_joint_positions, dq_desired
             )
         except Exception as e:
             self.get_logger().error(
-                f"Error in Full Orientation Control (Pinocchio Jacobian): {e}",
+                f"Error in Full Orientation Control (Pinocchio Jacobian): {e}"
             )
             import traceback
 
@@ -1060,58 +1042,44 @@ class OrientationControl(Node):
             return None
 
     def _get_pinocchio_config(self) -> np.ndarray:
+        # ... (remains the same) ...
         if self.pin_model is None:
-            raise ValueError("Pinocchio model not loaded for _get_pinocchio_config.")
+            raise ValueError("Pinocchio model not loaded")
         if self.current_joint_positions is None:
-            raise ValueError("Joint positions are None in _get_pinocchio_config.")
+            raise ValueError("Joint positions are None")
         if len(self.current_joint_positions) != len(self.articutool_joint_names):
-            raise ValueError(
-                f"Mismatch joint positions ({len(self.current_joint_positions)}) vs names ({len(self.articutool_joint_names)})"
-            )
-
+            raise ValueError(f"Mismatch joint positions vs names")
         q = pin.neutral(self.pin_model)
-
         for i, joint_name in enumerate(self.articutool_joint_names):
             if not self.pin_model.existJointName(joint_name):
-                raise ValueError(
-                    f"Joint '{joint_name}' not found in Pinocchio model during config creation."
-                )
-
+                raise ValueError(f"Joint '{joint_name}' not in Pinocchio model")
             joint_id = self.pin_model.getJointId(joint_name)
-            if joint_id < 1 or joint_id >= self.pin_model.njoints:
-                raise ValueError(f"Invalid joint ID {joint_id} for {joint_name}")
-            # For revolute joints (nq=2, nv=1 in Pinocchio), set [cos(theta), sin(theta)]
             if (
                 self.pin_model.joints[joint_id].nq == 2
                 and self.pin_model.joints[joint_id].nv == 1
-            ):
+            ):  # Revolute
                 theta = self.current_joint_positions[i]
                 q[self.pin_model.joints[joint_id].idx_q] = math.cos(theta)
                 q[self.pin_model.joints[joint_id].idx_q + 1] = math.sin(theta)
             elif (
                 self.pin_model.joints[joint_id].nq == 1
                 and self.pin_model.joints[joint_id].nv == 1
-            ):  # Prismatic or simple revolute if nq=1
+            ):
                 q[self.pin_model.joints[joint_id].idx_q] = self.current_joint_positions[
                     i
                 ]
-            else:
-                self.get_logger().warn(
-                    f"Joint '{joint_name}' has nq={self.pin_model.joints[joint_id].nq}, nv={self.pin_model.joints[joint_id].nv}. Using direct assignment to idx_q.",
-                    throttle_duration_sec=5.0,
-                )
+            else:  # Should not happen for typical Articutool joints
                 q_idx = self.pin_model.joints[joint_id].idx_q
                 if q_idx < len(q):
                     q[q_idx] = self.current_joint_positions[i]
                 else:
-                    raise ValueError(
-                        f"idx_q {q_idx} out of bounds for q (len {len(q)}) for joint {joint_name}"
-                    )
+                    raise ValueError(f"idx_q out of bounds for joint {joint_name}")
         return q
 
     def _get_pinocchio_imu_tooltip_orientation(
         self, q_pin_config: np.ndarray
     ) -> Optional[R]:
+        # Calculates R_IMUframe_to_ToolTip using Pinocchio
         if (
             self.pin_model is None
             or self.pin_data is None
@@ -1119,17 +1087,14 @@ class OrientationControl(Node):
             or self.tooltip_frame_id_pin < 0
         ):
             self.get_logger().error(
-                "Pinocchio model/data/frames not initialized for FK in _get_pinocchio_imu_tooltip_orientation.",
-                throttle_duration_sec=1.0,
+                "Pinocchio not ready for IMU->Tooltip FK.", throttle_duration_sec=1.0
             )
             return None
         try:
             pin.forwardKinematics(self.pin_model, self.pin_data, q_pin_config)
             pin.updateFramePlacements(self.pin_model, self.pin_data)
-
             T_world_imu_pin = self.pin_data.oMf[self.imu_frame_id_pin]
             T_world_tooltip_pin = self.pin_data.oMf[self.tooltip_frame_id_pin]
-
             T_imu_tooltip_se3 = T_world_imu_pin.inverse() * T_world_tooltip_pin
             return R.from_matrix(T_imu_tooltip_se3.rotation)
         except Exception as e:
@@ -1148,18 +1113,14 @@ class OrientationControl(Node):
             or self.tooltip_frame_id_pin < 0
         ):
             self.get_logger().error(
-                "Pinocchio model/data/frames not initialized for Jacobian.",
-                throttle_duration_sec=1.0,
+                "Pinocchio not ready for Jacobian.", throttle_duration_sec=1.0
             )
             return None
         try:
-            # Ensure FK is up-to-date for this q_pin_config before Jacobian
             pin.forwardKinematics(
                 self.pin_model, self.pin_data, q_pin_config
-            )  # Redundant if called just before, but safe
+            )  # Ensure FK is current
             pin.updateFramePlacements(self.pin_model, self.pin_data)
-
-            # Compute Jacobian for the tooltip frame, expressed in LOCAL frame coordinates
             J_tooltip_local_full = pin.computeFrameJacobian(
                 self.pin_model,
                 self.pin_data,
@@ -1167,58 +1128,38 @@ class OrientationControl(Node):
                 self.tooltip_frame_id_pin,
                 pin.ReferenceFrame.LOCAL,
             )
-            self.get_logger().debug(
-                f"Full Jacobian J_tooltip_local_full (shape {J_tooltip_local_full.shape}):\n{J_tooltip_local_full}"
-            )
-
             if (
                 not self.articutool_v_indices_pin
                 or len(self.articutool_v_indices_pin) != 2
             ):
                 self.get_logger().error(
-                    f"Pinocchio v_indices for Articutool joints not set up correctly: {self.articutool_v_indices_pin}"
+                    f"Pinocchio v_indices for Articutool not set up: {self.articutool_v_indices_pin}"
                 )
                 return np.zeros(2)
 
-            # Extract columns for Articutool joints and rows for angular velocity
             J_tooltip_angular_local_articutool_joints = J_tooltip_local_full[
                 3:6, self.articutool_v_indices_pin
             ]
-            self.get_logger().debug(
-                f"Sliced Articutool Jacobian J_tooltip_angular_local_articutool_joints (shape {J_tooltip_angular_local_articutool_joints.shape}):\n{J_tooltip_angular_local_articutool_joints}"
-            )
-
             if J_tooltip_angular_local_articutool_joints.shape != (3, 2):
                 self.get_logger().error(
-                    f"Pinocchio Jacobian shape error after slicing: {J_tooltip_angular_local_articutool_joints.shape}. Expected (3,2)."
+                    f"Pinocchio Jacobian shape error: {J_tooltip_angular_local_articutool_joints.shape}. Expected (3,2)."
                 )
                 return np.zeros(2)
-
-            if np.allclose(
-                J_tooltip_angular_local_articutool_joints, 0, atol=self.EPSILON
-            ):
-                self.get_logger().warn(
-                    "Pinocchio Jacobian for Articutool joints (angular part) is all zeros. Possible singularity or model issue.",
-                    throttle_duration_sec=1.0,
-                )
-                # If Jacobian is zero, pinv will be zero, dq_desired will be zero. This might be acceptable if omega is also zero.
 
             J_pinv = np.linalg.pinv(
                 J_tooltip_angular_local_articutool_joints,
                 rcond=self.JACOBIAN_PINV_RCOND,
             )
             dq_desired = J_pinv @ omega_desired_tooltip_local
-
             if dq_desired.shape != (2,):
                 self.get_logger().error(
                     f"Calculated dq_desired shape error: {dq_desired.shape}. Expected (2,)."
                 )
                 return np.zeros(2)
-
             return dq_desired
         except Exception as e:
             self.get_logger().error(
-                f"Error calculating joint velocities with Pinocchio Jacobian: {e}",
+                f"Error calculating joint velocities with Pinocchio Jacobian: {e}"
             )
             import traceback
 
@@ -1232,7 +1173,7 @@ class OrientationControl(Node):
         elif mode_to_reset_for == MODE_FULL_ORIENTATION:
             self.integral_error_full_orientation.fill(0.0)
             self.last_error_full_orientation.fill(0.0)
-        self.last_time = None
+        self.last_time = None  # Reset dt calculation
         self.get_logger().info(
             f"PID controller state reset for mode {mode_to_reset_for}."
         )
@@ -1242,21 +1183,15 @@ class OrientationControl(Node):
     ) -> np.ndarray:
         dampened_dq = np.copy(desired_dq)
         if current_q is None:
-            self.get_logger().warn(
-                "Dampening: current_q is None. Not dampening.",
-                throttle_duration_sec=2.0,
-            )
             return desired_dq
-
         if len(current_q) != len(self.articutool_joint_names) or len(desired_dq) != len(
             self.articutool_joint_names
         ):
-            self.get_logger().error(
-                f"Dampening: Length mismatch. q({len(current_q)}), dq({len(desired_dq)}), names({len(self.articutool_joint_names)}). Not dampening."
+            return (
+                np.zeros(len(self.articutool_joint_names))
+                if len(desired_dq) != len(self.articutool_joint_names)
+                else desired_dq
             )
-            if len(desired_dq) != len(self.articutool_joint_names):
-                return np.zeros(len(self.articutool_joint_names))
-            return desired_dq
 
         for i in range(len(self.articutool_joint_names)):
             q_i, dq_i = current_q[i], desired_dq[i]
@@ -1272,24 +1207,16 @@ class OrientationControl(Node):
             if dq_i < -self.EPSILON:
                 distance_to_lower = q_i - lower_limit
                 if distance_to_lower < threshold:
-                    current_scale_factor = distance_to_lower / threshold
-                    scale = np.clip(current_scale_factor, 0.0, 1.0) ** damp_power
-            elif dq_i > self.EPSILON:
+                    scale = (
+                        np.clip(distance_to_lower / threshold, 0.0, 1.0) ** damp_power
+                    )
+            elif dq_i > self.EPSILON:  # Moving towards upper limit
                 distance_to_upper = upper_limit - q_i
                 if distance_to_upper < threshold:
-                    current_scale_factor = distance_to_upper / threshold
-                    scale = np.clip(current_scale_factor, 0.0, 1.0) ** damp_power
-
+                    scale = (
+                        np.clip(distance_to_upper / threshold, 0.0, 1.0) ** damp_power
+                    )
             dampened_dq[i] *= scale
-
-        if (
-            not np.allclose(desired_dq, dampened_dq, atol=1e-4)
-            and self.get_logger().get_effective_level()
-            <= rclpy.logging.LoggingSeverity.DEBUG
-        ):
-            self.get_logger().debug(
-                f"Dampening: q={np.round(current_q, 3)}, original_dq={np.round(desired_dq, 3)}, dampened_dq={np.round(dampened_dq, 3)}"
-            )
         return dampened_dq
 
     def _publish_command(self, joint_velocities: Optional[np.ndarray]):
