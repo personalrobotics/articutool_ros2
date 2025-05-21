@@ -169,7 +169,7 @@ def generate_launch_description():
                 "imu_link_frame": "atool_imu_frame",
                 "tooltip_frame": "tool_tip",
                 "articutool_base_link": "atool_handle",
-                "feedback_topic": "/articutool/estimated_orientation",
+                "imu_topic": "/articutool/imu_data_and_orientation_calibrated",
                 "command_topic": "/articutool/velocity_controller/commands",
                 "joint_state_topic": "/articutool/joint_states",
                 "pid_gains.p": 5.0,

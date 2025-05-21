@@ -40,6 +40,7 @@ setup(
             "orientation_visualizer = scripts.orientation_visualizer:main",
             "ekf_quaternion_orientation_estimator = articutool_orientation.ekf_quaternion_orientation_estimator:main",
             "orientation_relay_node = articutool_orientation.orientation_relay_node:main",
+            "orientation_calibration_service = articutool_orientation.orientation_calibration_service:main",
         ],
     },
 )
