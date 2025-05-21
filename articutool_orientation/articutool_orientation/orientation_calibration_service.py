@@ -9,6 +9,7 @@ from rclpy.duration import Duration as RCLPYDuration
 from rclpy.time import Time
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType, SetParametersResult
 from rclpy.parameter import Parameter
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 
 from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion as QuaternionMsg
@@ -74,10 +75,15 @@ class OrientationCalibrationService(Node):
             self.imu_output_topic_param,
             10,  # QoS depth
         )
+        status_qos_profile = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,  # Or BEST_EFFORT
+        )
         self.calibration_status_pub = self.create_publisher(
             ImuCalibrationStatus,
             self.calibration_status_topic_param,
-            10,  # QoS depth, latched-like via rclpy.qos.QoSProfile(depth=1, durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL)
+            status_qos_profile,  # QoS depth, latched-like via rclpy.qos.QoSProfile(depth=1, durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL)
         )
 
         # Services
