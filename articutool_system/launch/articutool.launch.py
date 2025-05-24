@@ -124,8 +124,7 @@ def generate_launch_description():
                 )
             ]
         ),
-        launch_arguments={"filter_type": filter_type}.items(),
-        condition=IfCondition(PythonExpression(["'", sim, "' == 'real'"])),
+        launch_arguments={"filter_type": filter_type, "sim": sim}.items(),
     )
 
     # Include articutool_moveit launch file

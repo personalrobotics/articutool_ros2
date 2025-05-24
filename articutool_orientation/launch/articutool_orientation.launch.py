@@ -29,6 +29,15 @@ def generate_launch_description():
     )
     filter_type = LaunchConfiguration("filter_type")
 
+    # Declare the launch argument 'sim_mode'
+    declare_sim_arg = DeclareLaunchArgument(
+        "sim",
+        default_value="real",
+        description="Simulation mode for IMU data. 'real' uses IMU filters, 'mock' uses TF-based mock IMU.",
+        choices=["real", "mock"],
+    )
+    sim = LaunchConfiguration("sim")
+
     madgwick_orientation_node = launch_ros.actions.Node(
         package="imu_filter_madgwick",
         executable="imu_filter_madgwick_node",
@@ -44,7 +53,11 @@ def generate_launch_description():
                 articutool_orientation_directory, "config", "madgwick_filter.yaml"
             )
         ],
-        condition=IfCondition(PythonExpression(["'", filter_type, "' == 'madgwick'"])),
+        condition=IfCondition(
+            PythonExpression(
+                ["'", filter_type, "' == 'madgwick' and '", sim, "' == 'real'"]
+            )
+        ),
     )
 
     complementary_orientation_node = launch_ros.actions.Node(
@@ -63,7 +76,15 @@ def generate_launch_description():
             )
         ],
         condition=IfCondition(
-            PythonExpression(["'", filter_type, "' == 'complementary'"])
+            PythonExpression(
+                [
+                    "'",
+                    filter_type,
+                    "' == 'complementary' and '",
+                    sim,
+                    "' == 'real'",
+                ]
+            )
         ),
     )
 
@@ -72,7 +93,26 @@ def generate_launch_description():
         executable="ekf_quaternion_orientation_estimator",
         name="ekf_orientation_estimator",
         output="screen",
-        condition=IfCondition(PythonExpression(["'", filter_type, "' == 'ekf'"])),
+        condition=IfCondition(
+            PythonExpression(["'", filter_type, "' == 'ekf' and '", sim, "' == 'real'"])
+        ),
+    )
+
+    # Mock IMU Publisher Node (only launched if sim_mode is 'mock')
+    # It will query TF for robot_base_frame -> articutool_imu_frame and publish Imu messages.
+    mock_imu_publisher_node = Node(
+        package="articutool_orientation",
+        executable="mock_imu_publisher",
+        name="mock_imu_publisher",
+        output="screen",
+        parameters=[
+            {"robot_base_frame": "j2n6s200_link_base"},
+            {"articutool_imu_frame": "atool_imu_frame"},
+            {"uncalibrated_imu_topic": "/articutool/imu_data_and_orientation"},
+            {"calibrated_imu_topic": "/articutool/imu_data_and_orientation_calibrated"},
+            {"publish_rate_hz": 50.0},
+        ],
+        condition=IfCondition(PythonExpression(["'", sim, "' == 'mock'"])),
     )
 
     orientation_calibration_service_node = Node(
@@ -109,9 +149,11 @@ def generate_launch_description():
     return launch.LaunchDescription(
         [
             declare_filter_type_arg,
+            declare_sim_arg,
             ekf_orientation_node,
             madgwick_orientation_node,
             complementary_orientation_node,
+            mock_imu_publisher_node,
             orientation_relay_node,
             orientation_calibration_service_node,
         ]
