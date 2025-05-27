@@ -32,6 +32,23 @@ RUN git clone https://github.com/personalrobotics/articutool_ros2.git /articutoo
 # Note: The original Dockerfile had 'mv articutool_ros2 /articutool_ws/src/'.
 # Cloning directly to the final path is cleaner.
 
+# --- Add ada_moveit package using sparse checkout ---
+RUN mkdir -p /tmp/ada_ros2_checkout && cd /tmp/ada_ros2_checkout \
+    && git init \
+    && git remote add origin https://github.com/personalrobotics/ada_ros2.git \
+    && git config core.sparseCheckout true \
+    # Assuming 'ada_moveit' is a top-level directory in the 'ada_ros2' repository.
+    # If it's nested, e.g., 'moveit_configs/ada_moveit', adjust the path here.
+    && echo "ada_moveit/" >> .git/info/sparse-checkout \
+    # Fetch only the specific branch (jjaime2/articutool-integration)
+    && git fetch --depth 1 origin jjaime2/articutool-integration \
+    && git checkout FETCH_HEAD \
+    # Move the checked-out ada_moveit package to the workspace src directory
+    # This places ada_moveit alongside your articutool_ros2 directory
+    && mv ada_moveit /articutool_ws/src/ \
+    # Cleanup temporary directory
+    && cd / && rm -rf /tmp/ada_ros2_checkout
+
 # Update rosdep and apt repositories
 RUN rosdep update && apt-get update
 
