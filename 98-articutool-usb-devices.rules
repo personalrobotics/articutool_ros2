@@ -6,3 +6,6 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="i
 
 # Realsense D415 Camera
 SUBSYSTEM=="video4linux", ATTRS{idVendor}=="8086", ATTRS{idProduct}=="0ad6", SYMLINK+="realsense435", GROUP="dialout", MODE="0660"
+
+# Resense HEX21 F/T Sensor
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", ATTRS{serial}=="E6637C05E7335239", SYMLINK+="resense_ft", GROUP="dialout", MODE="0660"
