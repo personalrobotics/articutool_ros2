@@ -324,7 +324,7 @@
     />
     <xacro:articutool_link
       link_name="atool_ft_adapter"
-      link_mesh="motor_xc430_to_ft_nano25_adapter"
+      link_mesh="motor_xc430_to_ft_hex21_adapter"
       mass="0.001"
       cog="0 0 0"
     >
@@ -368,8 +368,8 @@
         parent="atool_link2"
         child="atool_ft_adapter"
         joint_axis_xyz="0 0 1"
-        joint_origin_xyz="0 0 ${scale * 19}"
-        joint_origin_rpy="0 0 0"
+        joint_origin_xyz="0 0 ${scale * 23}"
+        joint_origin_rpy="${J_PI/2} 0 0"
         joint_lower_limit="${-J_PI}"
         joint_upper_limit="${J_PI}"
         joint_velocity_limit="1"
@@ -393,7 +393,7 @@
     </xacro:unless>
     <xacro:articutool_link
       link_name="ft"
-      link_mesh="ft_nano25"
+      link_mesh="ft_hex21"
       mass="0.0634"
       cog="0 0 0"
     >
@@ -412,7 +412,7 @@
       parent="atool_ft_adapter"
       child="ft"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 ${scale * 11}"
+      joint_origin_xyz="0 ${scale * 4} 0"
       joint_origin_rpy="0 0 0"
     />
     <xacro:articutool_link
@@ -436,8 +436,8 @@
       parent="ft"
       child="tool"
       joint_axis_xyz="0 0 1"
-      joint_origin_xyz="0 0 ${scale * 21.6}"
-      joint_origin_rpy="0 0 0"
+      joint_origin_xyz="0 ${scale * 10.9} 0"
+      joint_origin_rpy="${-J_PI/2} 0 0"
     />
     <link name="tool_tip"/>
     <joint

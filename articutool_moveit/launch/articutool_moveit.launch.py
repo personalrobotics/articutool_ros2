@@ -59,7 +59,7 @@ def generate_launch_description():
         "end_effector_tool",
         default_value="fork",
         description="The end-effector tool being used",
-        choices=["fork"],
+        choices=["fork", "spoon"],
     )
     end_effector_tool = LaunchConfiguration("end_effector_tool")
 
