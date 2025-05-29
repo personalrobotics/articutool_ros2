@@ -1,0 +1,15 @@
+# Goal
+string primitive_name          # e.g., "TWIRL_CW", "VIBRATE_ROLL_QUICK"
+float32[] parameters           # Parameters for the primitive, order defined by primitive_name
+                               # e.g., TWIRL_CW: [target_rotations (e.g., 2.0), speed_rad_per_sec (e.g., pi/2)]
+                               # e.g., VIBRATE_ROLL: [frequency_hz, amplitude_rad, duration_sec]
+---
+# Result
+bool success
+string message
+float32[] final_joint_values   # Articutool joint values at the end of the primitive
+---
+# Feedback part
+string feedback_string      # For descriptive status messages
+float32 percent_complete
+float32[] current_joint_values

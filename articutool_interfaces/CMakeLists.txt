@@ -19,6 +19,7 @@ set(interface_files
   "srv/SetOrientationControl.srv"
   "srv/TriggerCalibration.srv"
   "msg/ImuCalibrationStatus.msg"
+  "action/ExecuteArticutoolPrimitive.action"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${interface_files}
