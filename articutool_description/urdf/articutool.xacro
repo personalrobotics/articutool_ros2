@@ -367,7 +367,7 @@
         type="revolute"
         parent="atool_link2"
         child="atool_ft_adapter"
-        joint_axis_xyz="0 0 1"
+        joint_axis_xyz="0 1 0"
         joint_origin_xyz="0 0 ${scale * 23}"
         joint_origin_rpy="${J_PI/2} 0 0"
         joint_lower_limit="${-J_PI}"
