@@ -79,4 +79,4 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Set the default command to execute
 # The entrypoint script will source necessary files before executing this.
-CMD ["/bin/bash", "-c", "source /root/.bashrc && bash"]
+CMD ["ros2", "launch", "articutool_system", "articutool.launch.py", "sim:=real"]

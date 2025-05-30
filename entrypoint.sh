@@ -9,38 +9,45 @@ if [ -d "$REPO_PATH" ] && [ -d "$REPO_PATH/.git" ]; then
   echo "Updating articutool_ros2 repository in $REPO_PATH..."
   cd "$REPO_PATH"
   git pull
-  # Note: If 'git pull' brings changes that require rebuilding your ROS workspace
-  # (e.g., changes to CMakeLists.txt, new packages), you would need to
-  # manually run 'colcon build' inside the container or trigger a rebuild.
-  # This script does not automatically rebuild the workspace after pulling.
-  cd "/articutool_ws" # Return to the working directory
+  # The script will 'cd "/articutool_ws"' later, before colcon build
 else
   echo "Warning: Repository at $REPO_PATH not found or is not a git repository. Skipping git pull."
-  # Optionally, you could clone it here if it doesn't exist, though your Dockerfile already handles the initial clone.
-  # Example:
-  # if [ ! -d "$REPO_PATH" ]; then
-  #   echo "Cloning articutool_ros2 repository..."
-  #   mkdir -p /articutool_ws/src
-  #   git clone https://github.com/personalrobotics/articutool_ros2.git "$REPO_PATH"
-  # fi
+  # Optionally, you could clone it here if it doesn't exist.
+  # However, the Dockerfile should generally handle the initial clone.
 fi
 
-# Source ROS and Articutool workspace setup files
-# This ensures the environment is set up correctly for the command that will be executed.
-echo "Sourcing ROS and Articutool setup files..."
+# Ensure we are in the workspace root for subsequent commands
+echo "Changing to workspace directory: /articutool_ws"
+cd "/articutool_ws"
+
+# Source base ROS environment first
+echo "Sourcing ROS base setup file..."
 if [ -f "/opt/ros/humble/setup.bash" ]; then
   source "/opt/ros/humble/setup.bash"
 else
-  echo "Warning: /opt/ros/humble/setup.bash not found."
+  echo "Error: /opt/ros/humble/setup.bash not found. ROS environment cannot be set up."
+  exit 1
 fi
 
+# Now, build the workspace after potentially pulling updates
+echo "Building the Articutool workspace with colcon..."
+colcon build --symlink-install
+
+# Source the local (now freshly built) workspace setup file
+echo "Sourcing the local Articutool workspace setup file..."
 if [ -f "/articutool_ws/install/setup.bash" ]; then
   source "/articutool_ws/install/setup.bash"
 else
-  echo "Warning: /articutool_ws/install/setup.bash not found. This might be normal if the workspace hasn't been built yet during image creation."
+  echo "Error: /articutool_ws/install/setup.bash not found after colcon build. Build might have failed or the path is incorrect."
+  exit 1
 fi
 
-# Execute the command passed to the entrypoint
-# (this will be the Dockerfile's CMD or arguments to 'docker run')
-echo "Executing command: $@"
-exec "$@"
+# Execute the command passed to the entrypoint (CMD in Dockerfile or docker run arguments).
+# If no command is passed, run the default articutool launch command.
+if [ $# -gt 0 ]; then
+  echo "Executing provided command: $@"
+  exec "$@"
+else
+  echo "Executing default command: ros2 launch articutool_system articutool.launch.py sim:=real"
+  exec ros2 launch articutool_system articutool.launch.py sim:=real
+fi
