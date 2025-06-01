@@ -6,7 +6,7 @@
 """
 ROS 2 Node for reading data from a Resense F/T sensor,
 performing software taring, and publishing as WrenchStamped messages.
-It also provides a service to re-trigger the taring procedure.
+It also provides a service (SetBool) to re-trigger the taring procedure.
 """
 
 import rclpy
@@ -20,7 +20,7 @@ import numpy as np
 import sys  # For stdout in tare progress
 
 from geometry_msgs.msg import WrenchStamped, Vector3 as Vector3Msg
-from std_srvs.srv import Trigger
+from std_srvs.srv import SetBool
 
 
 class ResenseFtNode(Node):
@@ -67,7 +67,7 @@ class ResenseFtNode(Node):
             "~/tare_sensor",
             ParameterDescriptor(
                 type=ParameterType.PARAMETER_STRING,
-                description="Service name to trigger sensor taring.",
+                description="Service name to trigger sensor taring (SetBool type).",
             ),
         )
         self.declare_parameter(
@@ -96,14 +96,18 @@ class ResenseFtNode(Node):
         )
 
         if publish_rate_hz <= 0:
-            self.get_logger().warn("Publish rate must be positive. Setting to 10.0 Hz.")
-            publish_rate_hz = 10.0
+            self.get_logger().warn(
+                "Publish rate must be positive. Setting to default 100.0 Hz."
+            )
+            publish_rate_hz = 100.0
 
         self.get_logger().info(f"Resense F/T Node Configuration:")
         self.get_logger().info(f"  Serial Port: {self.serial_port_name}")
         self.get_logger().info(f"  Publish Rate: {publish_rate_hz} Hz")
         self.get_logger().info(f"  Wrench Topic: {self.wrench_topic_name}")
-        self.get_logger().info(f"  Tare Service: {tare_service_name}")
+        self.get_logger().info(
+            f"  Tare Service ({tare_service_name}) Type: std_srvs/SetBool"
+        )
         self.get_logger().info(f"  Sensor Frame ID: {self.sensor_frame_id}")
 
         self.force_offsets = np.array([0.0, 0.0, 0.0])
@@ -116,7 +120,9 @@ class ResenseFtNode(Node):
             WrenchStamped, self.wrench_topic_name, 10
         )
         self.tare_service = self.create_service(
-            Trigger, tare_service_name, self.handle_tare_request
+            SetBool,
+            tare_service_name,
+            self.handle_tare_request,
         )
 
         if self._connect_sensor():
@@ -156,7 +162,7 @@ class ResenseFtNode(Node):
             self.get_logger().error("Cannot perform tare: Sensor not connected.")
             return False
         if self.tare_in_progress:
-            self.get_logger().warn("Tare already in progress.")
+            self.get_logger().warn("Tare already in progress. Ignoring request.")
             return False
 
         self.tare_in_progress = True
@@ -178,7 +184,7 @@ class ResenseFtNode(Node):
             self.tare_in_progress = False
             return False
 
-        time.sleep(0.2)  # Allow potential garbage to pass and user to react
+        time.sleep(0.2)
 
         start_tare_time = self.get_clock().now()
         max_tare_duration = rclpy.duration.Duration(seconds=5.0)
@@ -240,17 +246,31 @@ class ResenseFtNode(Node):
             return False
 
     def handle_tare_request(
-        self, request: Trigger.Request, response: Trigger.Response
-    ) -> Trigger.Response:
-        self.get_logger().info("Tare service called.")
-        if self._perform_tare_routine():
-            response.success = True
-            response.message = "Sensor taring successful."
-            self.get_logger().info("Tare service: Succeeded.")
-        else:
-            response.success = False
-            response.message = "Sensor taring failed. Check logs."
-            self.get_logger().error("Tare service: Failed.")
+        self,
+        request: SetBool.Request,
+        response: SetBool.Response,
+    ) -> SetBool.Response:
+        """Handles requests to the tare service."""
+        self.get_logger().info(f"Tare service called with data: {request.data}")
+
+        if request.data:
+            if self._perform_tare_routine():
+                response.success = True
+                response.message = "Sensor taring successful."
+                self.get_logger().info("Tare service: Succeeded.")
+            else:
+                response.success = False
+                response.message = "Sensor taring failed during routine. Check logs."
+                self.get_logger().error("Tare service: Failed.")
+        else:  # request.data is false
+            response.success = (
+                True  # Or False depending on desired behavior for "data: false"
+            )
+            response.message = "Tare request with data=false received. No action taken."
+            self.get_logger().info(response.message)
+            # If data:false should clear tare or have another meaning, implement here.
+            # For now, it's a no-op but reports success for the service call itself.
+
         return response
 
     def read_and_publish_data(self):
@@ -279,7 +299,6 @@ class ResenseFtNode(Node):
                         unpacked_data
                     )
 
-                    # ADDED: Detailed logging of raw unpacked data
                     self.get_logger().debug(
                         f"Raw Unpacked FT: Fx={fx_raw:.3f}, Fy={fy_raw:.3f}, Fz={fz_raw:.3f}, "
                         f"Mx={mx_raw:.3f}, My={my_raw:.3f}, Mz={mz_raw:.3f}, Temp={temp_raw:.1f}"
@@ -323,7 +342,9 @@ class ResenseFtNode(Node):
 
     def destroy_node(self):
         self.get_logger().info("Shutting down Resense F/T sensor node.")
-        if self.read_publish_timer:
+        if (
+            hasattr(self, "read_publish_timer") and self.read_publish_timer
+        ):  # Check if timer exists
             self.read_publish_timer.cancel()
         if self.serial_connection and self.serial_connection.is_open:
             self.serial_connection.close()
