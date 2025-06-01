@@ -42,6 +42,12 @@ def generate_launch_description():
         description="TF frame ID for the WrenchStamped messages and sensor origin.",
     )
 
+    declare_sim_arg = DeclareLaunchArgument(
+        "sim",
+        default_value="real",
+        description="Whether to use real or simulated F/T sensor",
+    )
+
     # Node configuration
     resense_ft_node = Node(
         package="articutool_ft",
@@ -55,6 +61,7 @@ def generate_launch_description():
                 "wrench_topic": LaunchConfiguration("wrench_topic"),
                 "tare_service_name": LaunchConfiguration("tare_service_name"),
                 "sensor_frame_id": LaunchConfiguration("sensor_frame_id"),
+                "sim": LaunchConfiguration("sim"),
             }
         ],
     )
@@ -66,6 +73,7 @@ def generate_launch_description():
             declare_wrench_topic_arg,
             declare_tare_service_arg,
             declare_sensor_frame_id_arg,
+            declare_sim_arg,
             resense_ft_node,
         ]
     )
