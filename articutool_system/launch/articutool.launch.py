@@ -149,6 +149,20 @@ def generate_launch_description():
         condition=IfCondition(launch_moveit),
     )
 
+    # Include articutool_ft launch file
+    ft_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("articutool_ft"),
+                    "launch",
+                    "articutool_ft.launch.py",
+                )
+            ]
+        ),
+        launch_arguments={"sim": sim}.items(),
+    )
+
     orientation_control_node = Node(
         package="articutool_control",
         executable="orientation_control_service",
@@ -195,6 +209,7 @@ def generate_launch_description():
             imu_launch,
             orientation_launch,
             moveit_launch,
+            ft_launch,
             orientation_control_node,
         ]
     )
