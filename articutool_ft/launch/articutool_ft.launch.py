@@ -20,33 +20,33 @@ def generate_launch_description():
 
     declare_publish_rate_arg = DeclareLaunchArgument(
         "publish_rate_hz",
-        default_value="100.0",  # Example: 100 Hz, adjust as needed
+        default_value="100.0",
         description="Rate at which to read sensor and publish data.",
     )
 
     declare_wrench_topic_arg = DeclareLaunchArgument(
         "wrench_topic",
-        default_value="ft_sensor/wrench_raw",  # Changed to be more specific, e.g. not namespaced by node
+        default_value="ft_sensor/wrench_raw",
         description="Topic to publish WrenchStamped F/T data.",
     )
 
     declare_tare_service_arg = DeclareLaunchArgument(
         "tare_service_name",
-        default_value="ft_sensor/tare",  # Changed to be more specific
+        default_value="ft_sensor/tare",
         description="Service name to trigger sensor taring.",
     )
 
     declare_sensor_frame_id_arg = DeclareLaunchArgument(
         "sensor_frame_id",
-        default_value="articutool_ft_sensor_link",  # Example, should match your URDF link
+        default_value="articutool_ft_sensor_link",
         description="TF frame ID for the WrenchStamped messages and sensor origin.",
     )
 
     # Node configuration
     resense_ft_node = Node(
         package="articutool_ft",
-        executable="resense_ft_publisher",  # Matches entry_point in setup.py
-        name="resense_ft_sensor_node",  # Name of the node instance
+        executable="resense_ft_publisher",
+        name="resense_ft_sensor_node",
         output="screen",
         parameters=[
             {
