@@ -13,14 +13,13 @@ from rclpy.parameter import Parameter
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType, SetParametersResult
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.action.server import ServerGoalHandle
-from action_msgs.msg import GoalStatus  # For correct status checking
-import time  # For synchronous sleep in execute_primitive_callback
+from action_msgs.msg import GoalStatus
+import time
 
 from geometry_msgs.msg import Quaternion, QuaternionStamped, Vector3
 from sensor_msgs.msg import Imu, JointState
 from std_msgs.msg import Float64MultiArray
 
-# Articutool specific interfaces
 from articutool_interfaces.srv import SetOrientationControl
 from articutool_interfaces.msg import ImuCalibrationStatus
 from articutool_interfaces.action import ExecuteArticutoolPrimitive
@@ -37,13 +36,12 @@ import traceback
 from typing import Optional, Tuple, List, Dict, Any
 from ament_index_python.packages import get_package_share_directory
 
-# Global Orientation Control Modes (from SetOrientationControl service)
 MODE_DISABLED = SetOrientationControl.Request.MODE_DISABLED
 MODE_LEVELING = SetOrientationControl.Request.MODE_LEVELING
 MODE_FULL_ORIENTATION = SetOrientationControl.Request.MODE_FULL_ORIENTATION
 
 
-class ArticutoolController(Node):  # Renamed from OrientationControl
+class ArticutoolController(Node):
     WORLD_Z_UP_VECTOR = np.array([0.0, 0.0, 1.0])
     EPSILON = 1e-6
     JACOBIAN_PINV_RCOND = 1e-3
@@ -54,12 +52,11 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
     R_IMU_TO_HANDLE_FIXED_SCIPY = _R_handle_to_imu_urdf.inv()
 
     def __init__(self):
-        super().__init__("articutool_controller")  # Updated node name
+        super().__init__("articutool_controller")
 
         self._declare_parameters()
         self._load_parameters()
 
-        # Pinocchio setup
         self.pin_model: Optional[pin.Model] = None
         self.pin_data: Optional[pin.Data] = None
         self.imu_frame_id_pin: int = -1
@@ -75,7 +72,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
             self.pin_model = None
 
-        # State for Global Orientation Control (via Service)
         self.current_orientation_control_mode: int = MODE_DISABLED
         self.target_orientation_jacobase: Optional[R] = None
         self.current_pitch_offset_leveling: float = 0.0
@@ -86,14 +82,12 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         self.last_error_full_orientation = np.zeros(3)
         self.integral_error_full_orientation = np.zeros(3)
 
-        # State for Primitive Action Execution (via Action Server)
         self.active_primitive_goal_handle: Optional[ServerGoalHandle] = None
         self.current_primitive_name: Optional[str] = None
         self.current_primitive_params: List[float] = []
         self.primitive_start_time: Optional[Time] = None
         self.primitive_internal_state: Dict[str, Any] = {}
 
-        # Shared State & Timing
         self.last_uncalibrated_imu_msg_time: Optional[Time] = None
         self.current_filterworld_to_imu_raw: Optional[R] = None
         self.current_linear_accel_imu: Optional[np.ndarray] = None
@@ -105,18 +99,17 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         self.current_joint_positions: Optional[np.ndarray] = None
         self.last_time: Optional[Time] = None
 
-        # ROS Communications
         self.add_on_set_parameters_callback(self.parameters_callback)
 
         self.orientation_mode_srv = self.create_service(
             SetOrientationControl,
-            "~/set_orientation_control_mode",  # Service name for global modes
+            "~/set_orientation_control_mode",
             self.set_orientation_control_mode_callback,
         )
         self.primitive_action_server = ActionServer(
             self,
             ExecuteArticutoolPrimitive,
-            "~/execute_primitive",  # Action name for primitives
+            "~/execute_primitive",
             execute_callback=self.execute_primitive_callback,
             goal_callback=self.primitive_goal_callback,
             cancel_callback=self.primitive_cancel_callback,
@@ -171,7 +164,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         string_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING)
         str_array_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY)
         dbl_array_desc = ParameterDescriptor(type=ParameterType.PARAMETER_DOUBLE_ARRAY)
-
         self.declare_parameter("pid_gains.p", 0.5, p_gain_desc)
         self.declare_parameter("pid_gains.i", 0.0, i_gain_desc)
         self.declare_parameter("pid_gains.d", 0.01, d_gain_desc)
@@ -271,9 +263,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         self.tooltip_link_name = self.get_parameter("tooltip_frame").value
         self.articutool_joint_names = self.get_parameter("joint_names").value
         if len(self.articutool_joint_names) != 2:
-            self.get_logger().fatal(
-                f"Expected 2 joint_names, got {len(self.articutool_joint_names)}. Check parameter file."
-            )
             raise ValueError("Articutool joint_names must have 2 entries.")
         self.joint_limits_lower = np.array(
             self.get_parameter("joint_limits.lower").value
@@ -282,9 +271,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             self.get_parameter("joint_limits.upper").value
         )
         if len(self.joint_limits_lower) != 2 or len(self.joint_limits_upper) != 2:
-            self.get_logger().fatal(
-                f"Expected 2 joint_limits, got L:{len(self.joint_limits_lower)}, U:{len(self.joint_limits_upper)}. Check parameter file."
-            )
             raise ValueError("Articutool joint_limits must have 2 entries.")
         self.joint_limit_threshold = self.get_parameter("joint_limits.threshold").value
         self.joint_limit_dampening_factor = self.get_parameter(
@@ -314,9 +300,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                     and param.value != self.rate
                 ):
                     changed_rate = True
-
         self._load_parameters()
-
         if changed_rate and self.timer is not None:
             self.timer.cancel()
             if self.rate > 0:
@@ -334,7 +318,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             self.get_logger().warn("URDF path not provided. Pinocchio setup skipped.")
             self.pin_model = None
             return
-
         resolved_xacro_path = self.xacro_filename
         if "package://" in self.xacro_filename:
             try:
@@ -355,7 +338,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 )
                 self.pin_model = None
                 return
-
         if not os.path.exists(resolved_xacro_path):
             self.get_logger().error(
                 f"Xacro/URDF file not found at resolved path: {resolved_xacro_path}"
@@ -389,13 +371,11 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 )
                 self.pin_model = None
                 return
-
             self.pin_model = pin.buildModelFromUrdf(model_file_to_load)
             self.pin_data = self.pin_model.createData()
             self.get_logger().info(
                 f"Pinocchio model loaded: {self.pin_model.name}, Nq={self.pin_model.nq}, Nv={self.pin_model.nv}"
             )
-
             if self.pin_model.existFrame(self.imu_link_name):
                 self.imu_frame_id_pin = self.pin_model.getFrameId(self.imu_link_name)
             else:
@@ -404,7 +384,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 )
                 self.pin_model = None
                 return
-
             if self.pin_model.existFrame(self.tooltip_link_name):
                 self.tooltip_frame_id_pin = self.pin_model.getFrameId(
                     self.tooltip_link_name
@@ -415,7 +394,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 )
                 self.pin_model = None
                 return
-
             self.articutool_joint_ids_pin = []
             self.articutool_q_indices_pin = []
             self.articutool_v_indices_pin = []
@@ -474,15 +452,13 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             and self.active_primitive_goal_handle.is_active
         ):
             self.get_logger().warn(
-                f"Primitive action '{self.current_primitive_name}' is active. "
-                "Aborting it due to new global orientation mode request."
+                f"Primitive action '{self.current_primitive_name}' active. Aborting it."
             )
             self.active_primitive_goal_handle.abort()
             self.active_primitive_goal_handle = None
             self.current_primitive_name = None
             self.current_primitive_params = []
             self.primitive_internal_state = {}
-
         self.current_orientation_control_mode = request.control_mode
         self.target_orientation_jacobase = None
         self.current_pitch_offset_leveling = 0.0
@@ -502,10 +478,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 or not self.is_externally_calibrated
                 or not is_calib_fresh
             ):
-                msg = (
-                    "Cannot enable FULL_ORIENTATION: Pinocchio model not loaded, "
-                    "system not externally calibrated, or calibration is stale."
-                )
+                msg = "Cannot enable FULL_ORIENTATION: Pinocchio/Calibration prerequisites not met."
                 self.get_logger().error(msg)
                 response.success = False
                 response.message = msg
@@ -539,13 +512,11 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             response.message = f"Invalid control_mode: {request.control_mode}"
             self.get_logger().error(response.message)
             self.current_orientation_control_mode = MODE_DISABLED
-
         if (
             not response.success
             or self.current_orientation_control_mode == MODE_DISABLED
         ):
             self._publish_zero_command()
-
         self.get_logger().info(response.message)
         return response
 
@@ -554,42 +525,31 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             f"Received primitive goal request: '{goal_request.primitive_name}'"
         )
         if self.current_orientation_control_mode != MODE_DISABLED:
-            msg = (
-                f"Rejecting primitive '{goal_request.primitive_name}'. "
-                f"Articutool is in mode '{self.current_orientation_control_mode}', not MODE_DISABLED. "
-                "Please set to MODE_DISABLED first via set_orientation_control_mode service."
-            )
+            msg = f"Rejecting primitive '{goal_request.primitive_name}'. Articutool not in MODE_DISABLED."
             self.get_logger().error(msg)
             return GoalResponse.REJECT
-
         if (
             self.active_primitive_goal_handle is not None
             and self.active_primitive_goal_handle.is_active
         ):
-            msg = (
-                f"Rejecting primitive '{goal_request.primitive_name}'. "
-                f"Another primitive '{self.current_primitive_name}' is already active."
-            )
+            msg = f"Rejecting primitive '{goal_request.primitive_name}'. Another primitive '{self.current_primitive_name}' active."
             self.get_logger().warn(msg)
             return GoalResponse.REJECT
-
         self.get_logger().info(
             f"Accepting primitive goal: '{goal_request.primitive_name}'"
         )
         return GoalResponse.ACCEPT
 
-    def execute_primitive_callback(self, goal_handle: ServerGoalHandle):  # Synchronous
+    def execute_primitive_callback(self, goal_handle: ServerGoalHandle):
         self.active_primitive_goal_handle = goal_handle
         self.current_primitive_name = goal_handle.request.primitive_name
         self.current_primitive_params = list(goal_handle.request.parameters)
         self.primitive_start_time = self.get_clock().now()
         self.primitive_internal_state = {}
-
         self.get_logger().info(
             f"Executing primitive: '{self.current_primitive_name}' with params {self.current_primitive_params}"
         )
         primitive_name_for_logging = str(self.current_primitive_name)
-
         try:
             while (
                 rclpy.ok()
@@ -602,11 +562,9 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                     )
                     break
                 time.sleep(1.0 / (self.rate * 2.0) if self.rate > 0 else 0.05)
-
             self.get_logger().debug(
                 f"Primitive '{primitive_name_for_logging}' execution loop finished. Final ROS goal status: {goal_handle.status}"
             )
-
         except Exception as e:
             self.get_logger().error(
                 f"Exception in execute_primitive_callback for '{primitive_name_for_logging}': {e}\n{traceback.format_exc()}"
@@ -619,7 +577,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         finally:
             result = ExecuteArticutoolPrimitive.Result()
             status_for_log = goal_handle.status
-
             if goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
                 result.success = True
                 result.message = (
@@ -645,20 +602,16 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                     goal_handle.abort()
                     result.message += " Explicitly aborted in finally."
                     status_for_log = GoalStatus.STATUS_ABORTED
-
             if self.current_joint_positions is not None:
                 result.final_joint_values = list(self.current_joint_positions)
             else:
                 result.final_joint_values = []
-
             self.get_logger().info(
                 f"Returning result for primitive '{goal_handle.request.primitive_name}': {result.message} (Success: {result.success}, Final ROS Action Status: {status_for_log})"
             )
-
             if self.active_primitive_goal_handle == goal_handle:
                 self.active_primitive_goal_handle = None
                 self.current_primitive_name = None
-
             return result
 
     def primitive_cancel_callback(self, cancel_request_goal_handle: ServerGoalHandle):
@@ -689,8 +642,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
         elif self.current_filterworld_to_imu_raw is None:
             self.get_logger().warn(
-                "UNCALIBRATED IMU: Zero/NaN quaternion. Waiting for valid data.",
-                throttle_duration_sec=1.0,
+                "UNCALIBRATED IMU: Zero/NaN quaternion.", throttle_duration_sec=1.0
             )
         self.current_linear_accel_imu = np.array(
             [
@@ -725,8 +677,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
         elif self.current_RobotBase_to_IMUframe_calibrated is None:
             self.get_logger().warn(
-                "CALIBRATED IMU: Zero/NaN quaternion. Waiting for valid data.",
-                throttle_duration_sec=1.0,
+                "CALIBRATED IMU: Zero/NaN quaternion.", throttle_duration_sec=1.0
             )
 
     def calibration_status_callback(self, msg: ImuCalibrationStatus):
@@ -765,89 +716,73 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
 
     def _update_active_primitive(self, dt: float) -> Tuple[np.ndarray, bool]:
         goal_handle = self.active_primitive_goal_handle
-        if goal_handle is None:
+        if goal_handle is None or not goal_handle.is_active:
             return np.zeros(2), True
-        if not goal_handle.is_active:
-            return np.zeros(2), True
-
         if goal_handle.is_cancel_requested:
             self.get_logger().info(
-                f"Primitive '{self.current_primitive_name}' processing cancellation request."
+                f"Primitive '{self.current_primitive_name}' cancelling."
             )
             goal_handle.canceled()
             return np.zeros(2), True
-
         feedback_msg = ExecuteArticutoolPrimitive.Feedback()
         feedback_msg.feedback_string = f"Executing {self.current_primitive_name}"
         if self.current_joint_positions is not None:
             feedback_msg.current_joint_values = list(self.current_joint_positions)
         else:
             feedback_msg.current_joint_values = []
-
         dq_primitive = np.zeros(2)
         is_finished_this_tick = False
         primitive_succeeded = False
-
         try:
             if self.current_primitive_name == "TWIRL_CW":
                 if (
                     not self.current_primitive_params
                     or len(self.current_primitive_params) < 2
                 ):
-                    self.get_logger().error(
-                        "TWIRL_CW: Missing parameters [target_rotations, speed_rad_per_sec]"
-                    )
+                    self.get_logger().error("TWIRL_CW: Missing params")
                     is_finished_this_tick = True
                     primitive_succeeded = False
                 elif self.current_joint_positions is None:
-                    self.get_logger().error(
-                        "TWIRL_CW: Current joint positions are None, cannot safely execute."
-                    )
+                    self.get_logger().error("TWIRL_CW: No joint_positions")
                     is_finished_this_tick = True
                     primitive_succeeded = False
                 else:
-                    target_rotations = self.current_primitive_params[0]
-                    speed_rad_per_sec = abs(self.current_primitive_params[1])
+                    target_rotations, speed_rad_per_sec = (
+                        self.current_primitive_params[0],
+                        abs(self.current_primitive_params[1]),
+                    )
                     if "accumulated_roll_rad" not in self.primitive_internal_state:
                         self.primitive_internal_state["accumulated_roll_rad"] = 0.0
-                    target_total_roll_delta = target_rotations * 2 * math.pi
-                    current_accumulated_delta = self.primitive_internal_state[
+                    target_total_delta = target_rotations * 2 * math.pi
+                    current_delta = self.primitive_internal_state[
                         "accumulated_roll_rad"
                     ]
-                    if (
-                        abs(current_accumulated_delta)
-                        < abs(target_total_roll_delta) - self.EPSILON
-                    ):
-                        remaining_delta_to_accumulate = (
-                            target_total_roll_delta - current_accumulated_delta
-                        )
-                        roll_velocity_this_tick = (
-                            np.sign(remaining_delta_to_accumulate) * speed_rad_per_sec
-                        )
-                        if abs(roll_velocity_this_tick * dt) > abs(
-                            remaining_delta_to_accumulate
-                        ):
-                            roll_velocity_this_tick = (
-                                remaining_delta_to_accumulate / dt
-                                if dt > self.EPSILON
-                                else 0.0
-                            )
-                        dq_primitive[1] = roll_velocity_this_tick
+                    if abs(current_delta) < abs(target_total_delta) - self.EPSILON:
+                        remaining_delta = target_total_delta - current_delta
+                        vel = np.sign(remaining_delta) * speed_rad_per_sec
+                        if abs(vel * dt) > abs(remaining_delta):
+                            vel = remaining_delta / dt if dt > self.EPSILON else 0.0
+                        dq_primitive[1] = vel
                         self.primitive_internal_state["accumulated_roll_rad"] += (
                             dq_primitive[1] * dt
                         )
-                        percent_done = (
-                            abs(
-                                self.primitive_internal_state["accumulated_roll_rad"]
-                                / target_total_roll_delta
-                            )
-                            if target_total_roll_delta != 0
-                            else 1.0
-                        )
                         feedback_msg.percent_complete = min(
-                            1.0, max(0.0, float(percent_done))
+                            1.0,
+                            max(
+                                0.0,
+                                float(
+                                    abs(
+                                        self.primitive_internal_state[
+                                            "accumulated_roll_rad"
+                                        ]
+                                        / target_total_delta
+                                    )
+                                    if target_total_delta != 0
+                                    else 1.0
+                                ),
+                            ),
                         )
-                        feedback_msg.feedback_string = f"Twirling CW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_roll_delta:.2f} rad"
+                        feedback_msg.feedback_string = f"Twirling CW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_delta:.2f} rad"
                     else:
                         is_finished_this_tick = True
                         primitive_succeeded = True
@@ -862,45 +797,42 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                     is_finished_this_tick = True
                     primitive_succeeded = False
                 else:
-                    target_rotations = self.current_primitive_params[0]
-                    speed_rad_per_sec = abs(self.current_primitive_params[1])
+                    target_rotations, speed_rad_per_sec = (
+                        self.current_primitive_params[0],
+                        abs(self.current_primitive_params[1]),
+                    )
                     if "accumulated_roll_rad" not in self.primitive_internal_state:
                         self.primitive_internal_state["accumulated_roll_rad"] = 0.0
-                    target_total_roll_delta = -target_rotations * 2 * math.pi
-                    current_accumulated_delta = self.primitive_internal_state[
+                    target_total_delta = -target_rotations * 2 * math.pi
+                    current_delta = self.primitive_internal_state[
                         "accumulated_roll_rad"
                     ]
-                    remaining_to_accumulate = (
-                        target_total_roll_delta - current_accumulated_delta
-                    )
-                    if abs(remaining_to_accumulate) > self.EPSILON:
-                        roll_velocity_this_tick = (
-                            np.sign(remaining_to_accumulate) * speed_rad_per_sec
-                        )
-                        if abs(roll_velocity_this_tick * dt) > abs(
-                            remaining_to_accumulate
-                        ):
-                            roll_velocity_this_tick = (
-                                remaining_to_accumulate / dt
-                                if dt > self.EPSILON
-                                else 0.0
-                            )
-                        dq_primitive[1] = roll_velocity_this_tick
+                    if abs(current_delta) < abs(target_total_delta) - self.EPSILON:
+                        remaining_delta = target_total_delta - current_delta
+                        vel = np.sign(remaining_delta) * speed_rad_per_sec
+                        if abs(vel * dt) > abs(remaining_delta):
+                            vel = remaining_delta / dt if dt > self.EPSILON else 0.0
+                        dq_primitive[1] = vel
                         self.primitive_internal_state["accumulated_roll_rad"] += (
                             dq_primitive[1] * dt
                         )
-                        percent_done = (
-                            abs(
-                                self.primitive_internal_state["accumulated_roll_rad"]
-                                / target_total_roll_delta
-                            )
-                            if target_total_roll_delta != 0
-                            else 1.0
-                        )
                         feedback_msg.percent_complete = min(
-                            1.0, max(0.0, float(percent_done))
+                            1.0,
+                            max(
+                                0.0,
+                                float(
+                                    abs(
+                                        self.primitive_internal_state[
+                                            "accumulated_roll_rad"
+                                        ]
+                                        / target_total_delta
+                                    )
+                                    if target_total_delta != 0
+                                    else 1.0
+                                ),
+                            ),
                         )
-                        feedback_msg.feedback_string = f"Twirling CCW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_roll_delta:.2f} rad"
+                        feedback_msg.feedback_string = f"Twirling CCW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_delta:.2f} rad"
                     else:
                         is_finished_this_tick = True
                         primitive_succeeded = True
@@ -946,22 +878,17 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
             is_finished_this_tick = True
             primitive_succeeded = False
-            feedback_msg.feedback_string = (
-                f"Error during {self.current_primitive_name}: {e}"
-            )
-
+            feedback_msg.feedback_string = f"Error: {e}"
         if goal_handle.is_active:
             goal_handle.publish_feedback(feedback_msg)
-
         if is_finished_this_tick:
             self.get_logger().info(
-                f"Primitive '{self.current_primitive_name}' determined as finished in _update. Success: {primitive_succeeded}"
+                f"Primitive '{self.current_primitive_name}' finished in _update. Success: {primitive_succeeded}"
             )
             if primitive_succeeded:
                 goal_handle.succeed()
             else:
                 goal_handle.abort()
-
         return dq_primitive, is_finished_this_tick
 
     def control_loop(self):
@@ -973,24 +900,19 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
         self.last_time = now
         if dt <= self.EPSILON:
             return
-
         final_raw_commanded_dq = np.zeros(2)
-
         if (
             self.active_primitive_goal_handle is not None
             and self.active_primitive_goal_handle.is_active
         ):
             if self.current_orientation_control_mode != MODE_DISABLED:
                 self.get_logger().error(
-                    f"CRITICAL LOGIC ERROR: Primitive '{self.current_primitive_name}' active, "
-                    f"but global mode is '{self.current_orientation_control_mode}' (NOT DISABLED). Primitive takes precedence.",
+                    f"CRITICAL LOGIC ERROR: Primitive '{self.current_primitive_name}' active, but global mode is '{self.current_orientation_control_mode}' (NOT DISABLED). Primitive takes precedence.",
                     throttle_duration_sec=5.0,
                 )
-
             dq_primitive_step, _ = self._update_active_primitive(dt)
             if dq_primitive_step is not None:
                 final_raw_commanded_dq = dq_primitive_step
-
         elif self.current_orientation_control_mode == MODE_LEVELING:
             mode_leveling_ready = (
                 self.current_filterworld_to_imu_raw is not None
@@ -1027,7 +949,6 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                     "MODE_FULL_ORIENTATION: Prerequisites not met.",
                     throttle_duration_sec=2.0,
                 )
-
         if self.current_joint_positions is not None:
             final_dq_after_limits = self._enforce_joint_limits_predictive(
                 self.current_joint_positions, final_raw_commanded_dq, dt
@@ -1244,6 +1165,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
             return None
         try:
+            # self.get_logger().debug(f"Current Articutool Joint Positions for Pinocchio: {self.current_joint_positions}")
             q = pin.neutral(self.pin_model)
             if self.pin_model.nq > len(q):
                 q_expanded = np.zeros(self.pin_model.nq)
@@ -1261,7 +1183,7 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
                 val = self.current_joint_positions[i]
                 if idx_q + nq_joint > len(q):
                     self.get_logger().error(
-                        f"Pinocchio q vector too short for joint {joint_name}. idx_q: {idx_q}, nq_joint: {nq_joint}, len(q): {len(q)}"
+                        f"Pinocchio q vector too short for joint {joint_name}."
                     )
                     return None
                 if nq_joint == 1:
@@ -1293,20 +1215,34 @@ class ArticutoolController(Node):  # Renamed from OrientationControl
             )
             return None
         try:
+            # self.get_logger().debug(f"_get_pinocchio_imu_tooltip_orientation: Using q_pin_config: {q_pin_config}")
             pin.forwardKinematics(self.pin_model, self.pin_data, q_pin_config)
             pin.updateFramePlacements(self.pin_model, self.pin_data)
             T_world_imu = self.pin_data.oMf[self.imu_frame_id_pin]
             T_world_tooltip = self.pin_data.oMf[self.tooltip_frame_id_pin]
-            if not (
-                T_world_imu.rotation.trace() > -0.9999
-                and T_world_tooltip.rotation.trace() > -0.9999
-            ):
+
+            imu_rotation_matrix = T_world_imu.rotation
+            tooltip_rotation_matrix = T_world_tooltip.rotation
+
+            # Check if matrices are valid rotation matrices (determinant approx +1)
+            is_imu_rot_valid = (
+                abs(np.linalg.det(imu_rotation_matrix) - 1.0) < self.EPSILON
+            )
+            is_tooltip_rot_valid = (
+                abs(np.linalg.det(tooltip_rotation_matrix) - 1.0) < self.EPSILON
+            )
+
+            if not (is_imu_rot_valid and is_tooltip_rot_valid):
                 self.get_logger().warn(
-                    "Invalid rotation matrix in Pinocchio FK for IMU or Tooltip.",
+                    "Invalid rotation matrix from Pinocchio FK (determinant not approx +1). "
+                    f"IMU det: {np.linalg.det(imu_rotation_matrix):.4f} (trace: {imu_rotation_matrix.trace():.4f}), "
+                    f"Tooltip det: {np.linalg.det(tooltip_rotation_matrix):.4f} (trace: {tooltip_rotation_matrix.trace():.4f})",
                     throttle_duration_sec=2.0,
                 )
                 return None
-            return R.from_matrix((T_world_imu.inverse() * T_world_tooltip).rotation)
+
+            T_imu_tooltip_se3 = T_world_imu.inverse() * T_world_tooltip
+            return R.from_matrix(T_imu_tooltip_se3.rotation)
         except Exception as e:
             self.get_logger().error(f"Pinocchio FK error: {e} {traceback.format_exc()}")
             return None
@@ -1452,9 +1388,7 @@ def main(args=None):
             f"Unhandled exception in ArticutoolController: {e}\n{traceback.format_exc()}"
         )
     finally:
-        if (
-            node and node.executor is None
-        ):  # This condition might need re-evaluation if executor is always used
+        if node and node.executor is None:
             if (
                 node.active_primitive_goal_handle is not None
                 and node.active_primitive_goal_handle.is_active
