@@ -21,6 +21,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import threading
 import traceback
+from typing import Optional
 
 import tf2_ros
 from tf2_ros import (
@@ -118,10 +119,10 @@ class OrientationCalibrationService(Node):
         self.declare_parameter("robot_base_frame", "j2n6s200_link_base", string_desc)
         self.declare_parameter("articutool_mount_frame", "atool_imu_frame", string_desc)
         self.declare_parameter("tf_lookup_timeout_sec", 1.0, double_desc)
-        self.declare_parameter("calibration_sampling_duration_sec", 0.5, double_desc)
-        self.declare_parameter("min_samples_for_calibration", 10, int_desc)
+        self.declare_parameter("calibration_sampling_duration_sec", 1.0, double_desc)
+        self.declare_parameter("min_samples_for_calibration", 50, int_desc)
         self.declare_parameter(
-            "max_angular_velocity_stillness_threshold_rps", 0.05, double_desc
+            "max_angular_velocity_stillness_threshold_rps", 0.1, double_desc
         )
 
     def _load_parameters(self):
