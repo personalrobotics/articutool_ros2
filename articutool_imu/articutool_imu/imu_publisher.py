@@ -33,7 +33,7 @@ class IMUPublisher(Node):
             MagneticField, "articutool/magnetic_field", 10
         )
 
-        timer_period = 0.01  # 100 Hz
+        timer_period = 0.02  # 50 Hz
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.ser = serial.Serial(self.imu_port)
         self.ser.baudrate = self.baud_rate
@@ -56,7 +56,7 @@ class IMUPublisher(Node):
         if len(data) == 14:
             try:
                 # --- Define Conversion Factors ---
-                GRAVITY_MPS2 = 9.80665 
+                GRAVITY_MPS2 = 9.80665
                 MG_TO_MPS2 = GRAVITY_MPS2 / 1000.0
                 MICROTESLA_TO_TESLA = 1.0e-6
 
@@ -71,8 +71,8 @@ class IMUPublisher(Node):
                 gyro_z = math.radians(float(data[7]))
 
                 # --- Magnetometer (Convert microTesla to Tesla) ---
-                mag_x = float(data[8]) * MICROTESLA_TO_TESLA 
-                mag_y = float(data[9]) * MICROTESLA_TO_TESLA 
+                mag_x = float(data[8]) * MICROTESLA_TO_TESLA
+                mag_y = float(data[9]) * MICROTESLA_TO_TESLA
                 mag_z = float(data[10]) * MICROTESLA_TO_TESLA
 
                 # --- Create Messages ---
@@ -84,14 +84,14 @@ class IMUPublisher(Node):
                 imu_msg.header = header
                 imu_msg.linear_acceleration = Vector3(x=accel_x, y=accel_y, z=accel_z)
                 imu_msg.angular_velocity = Vector3(x=gyro_x, y=gyro_y, z=gyro_z)
-                imu_msg.orientation_covariance = [-1.0] + [0.0]*8 
-                imu_msg.angular_velocity_covariance = [0.0]*9
-                imu_msg.linear_acceleration_covariance = [0.0]*9
+                imu_msg.orientation_covariance = [-1.0] + [0.0] * 8
+                imu_msg.angular_velocity_covariance = [0.0] * 9
+                imu_msg.linear_acceleration_covariance = [0.0] * 9
 
                 mag_msg = MagneticField()
                 mag_msg.header = header
                 mag_msg.magnetic_field = Vector3(x=mag_x, y=mag_y, z=mag_z)
-                mag_msg.magnetic_field_covariance = [0.0]*9
+                mag_msg.magnetic_field_covariance = [0.0] * 9
 
                 self.imu_publisher_.publish(imu_msg)
                 self.mag_publisher_.publish(mag_msg)
