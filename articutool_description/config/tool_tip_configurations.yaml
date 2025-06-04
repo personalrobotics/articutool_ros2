@@ -1,0 +1,20 @@
+default_tool: # A fallback or a common tool
+  x_mm: 7.0
+  y_mm: 0.0
+  z_mm: 70.0
+
+spoon:
+  x_mm: -5.5
+  y_mm: 0.0
+  z_mm: 80.5
+
+fork:
+  x_mm: 7.0   # Different X offset for fork
+  y_mm: 0.0
+  z_mm: 70.0  # Different Z offset for fork
+
+# Add other tools as needed
+# another_tool:
+#   x_mm: 10.0
+#   y_mm: 1.0
+#   z_mm: 65.0

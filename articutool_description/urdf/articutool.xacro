@@ -41,6 +41,19 @@
     value="0.001"
   />
 
+  <xacro:arg
+    name="tool_tip_configs_file_arg"
+    default="$(find articutool_description)/config/tool_tip_configurations.yaml"
+  />
+  <xacro:property name="tool_tip_configs_file" value="$(arg tool_tip_configs_file_arg)"/>
+  <xacro:property name="tool_tip_configs" value="${xacro.load_yaml(tool_tip_configs_file)}"/>
+  <xacro:property
+    name="current_tool_specific_config"
+    value="${tool_tip_configs[end_effector_tool] if end_effector_tool in tool_tip_configs else tool_tip_configs['default_tool']}"
+    />
+  <xacro:property name="tool_tip_x_val" value="${scale * current_tool_specific_config['x_mm']}"/>
+  <xacro:property name="tool_tip_y_val" value="${scale * current_tool_specific_config['y_mm']}"/>
+  <xacro:property name="tool_tip_z_val" value="${scale * current_tool_specific_config['z_mm']}"/>
   <xacro:macro
     name="articutool_link"
     params="link_name link_mesh mass:=0 cog:='0 0 0' *inertia"
@@ -349,7 +362,7 @@
       <parent link="tool"/>
       <origin
         rpy="0 0 ${-J_PI/2}"
-        xyz="${scale * 7} 0 ${scale * 70}"
+        xyz="${tool_tip_x_val} ${tool_tip_y_val} ${tool_tip_z_val}"
       />
     </joint>
   </xacro:macro>
