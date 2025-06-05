@@ -33,23 +33,64 @@ RUN git clone https://github.com/personalrobotics/articutool_ros2.git /articutoo
 # Cloning directly to the final path is cleaner.
 
 # --- Add ada_moveit and ada_description packages using sparse checkout ---
-RUN mkdir -p /tmp/ada_ros2_checkout && cd /tmp/ada_ros2_checkout \
+# Create target directories first if they don't exist (git clone won't create them for sparse checkout like this)
+RUN mkdir -p /articutool_ws/src/ada_moveit_checkout_root
+RUN mkdir -p /articutool_ws/src/ada_description_checkout_root
+
+# Checkout ada_moveit
+RUN cd /articutool_ws/src/ada_moveit_checkout_root \
     && git init \
     && git remote add origin https://github.com/personalrobotics/ada_ros2.git \
     && git config core.sparseCheckout true \
-    # Assuming 'ada_moveit' and 'ada_description' are top-level directories in the 'ada_ros2' repository.
-    # If they are nested, e.g., 'configs/ada_description', adjust the paths here.
-    && echo "ada_moveit/" >> .git/info/sparse-checkout \
-    && echo "ada_description/" >> .git/info/sparse-checkout \
-    # Fetch only the specific branch (jjaime2/articutool-integration)
+    && echo "ada_moveit/" > .git/info/sparse-checkout \
     && git fetch --depth 1 origin jjaime2/articutool-integration \
     && git checkout FETCH_HEAD \
-    # Move the checked-out packages to the workspace src directory
-    # This places them alongside your articutool_ros2 directory
-    && mv ada_moveit /articutool_ws/src/ \
-    && mv ada_description /articutool_ws/src/ \
-    # Cleanup temporary directory
-    && cd / && rm -rf /tmp/ada_ros2_checkout
+    # Now ada_moveit_checkout_root contains the .git dir and the ada_moveit subdir
+    # We want ada_moveit itself to be the package directory in src
+    && mv ada_moveit ../ada_moveit \
+    && cd .. && rm -rf ada_moveit_checkout_root/.git # Keep the moved ada_moveit, remove the temporary .git from checkout root
+    # Correction: The above mv and rm .git is problematic. 
+    # A better way is to clone the whole repo into a temp spot, then move the .git dir
+    # OR, sparse checkout such that the desired folders are at the root of the checkout.
+    # Let's try a different approach for the Dockerfile:
+    # Clone the whole repo shallowly into a temporary location first, then use sparse-checkout set
+
+RUN mkdir -p /articutool_ws/src/ada_ros2_temp_clone && \
+    cd /articutool_ws/src/ada_ros2_temp_clone && \
+    git init && \
+    git remote add origin https://github.com/personalrobotics/ada_ros2.git && \
+    git fetch --depth 1 origin jjaime2/articutool-integration && \
+    git checkout FETCH_HEAD && \
+    git sparse-checkout init --cone && \
+    git sparse-checkout set ada_moveit ada_description && \
+    # Now /articutool_ws/src/ada_ros2_temp_clone contains .git, ada_moveit, ada_description
+    # Move them to the desired locations
+    mv ada_moveit /articutool_ws/src/ada_moveit && \
+    mv ada_description /articutool_ws/src/ada_description && \
+    # We need to move the .git directory associated with ada_ros2_temp_clone
+    # if we want to pull from the root of where ada_moveit/ada_description came from.
+    # This gets complicated if they are meant to be independent after checkout.
+
+    # A simpler approach if ada_moveit and ada_description are separate repos or 
+    # you just want to manage their updates independently after initial pull:
+    # For each package, clone it separately if that's an option.
+    # If they MUST come from a single sparse checkout of ada_ros2:
+
+    # Revised Dockerfile strategy for sparse checkout to be updatable:
+    # We will checkout the whole ada_ros2 into a subdir, then symlink or just use paths.
+    # For entrypoint updates, the `git pull` must happen in the root of that ada_ros2 checkout.
+
+RUN mkdir -p /articutool_ws/src/ada_ros2_checkout_dir && \
+    cd /articutool_ws/src/ada_ros2_checkout_dir && \
+    git init && \
+    git remote add origin https://github.com/personalrobotics/ada_ros2.git && \
+    git fetch --depth 1 origin jjaime2/articutool-integration && \
+    git checkout FETCH_HEAD && \
+    git sparse-checkout init --cone && \
+    git sparse-checkout set ada_moveit ada_description
+    # Now /articutool_ws/src/ada_ros2_checkout_dir is the git repo
+    # containing ada_moveit and ada_description subdirectories.
+    # colcon will find them via relative paths if this dir is part of ROS_PACKAGE_PATH.
 
 # Update rosdep and apt repositories
 RUN rosdep update && apt-get update
