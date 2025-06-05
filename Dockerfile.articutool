@@ -2,16 +2,6 @@ FROM ros2_humble_base:latest
 
 ENV ROS_DOMAIN_ID=42
 
-# Install prerequisites for adding GPG keys, if not already present
-# and then add/update the ROS GPG key
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gnupg2 \
-    lsb-release \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list
-
 # Now, update and install ROS2 control and other dependencies
 RUN apt-get update && apt-get install -y \
     ros-humble-ros2-control \
