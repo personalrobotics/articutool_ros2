@@ -178,7 +178,7 @@
       <child link="atool_imu_frame"/>
       <origin
         xyz="0 0 0"
-        rpy="${J_PI/2} 0 ${J_PI/2}"
+        rpy="0 ${-J_PI/2} ${-J_PI}"
       />
     </joint>
     <xacro:articutool_link
