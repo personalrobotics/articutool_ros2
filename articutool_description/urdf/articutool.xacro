@@ -178,7 +178,7 @@
       <child link="atool_imu_frame"/>
       <origin
         xyz="0 0 0"
-        rpy="0 ${-J_PI/2} ${-J_PI}"
+        rpy="${J_PI/2} 0 ${J_PI/2}"
       />
     </joint>
     <xacro:articutool_link
@@ -196,7 +196,7 @@
       child="atool_electronics_holder"
       joint_axis_xyz="0 0 1"
       joint_origin_xyz="${scale * -15} 0 0"
-      joint_origin_rpy="0 ${-J_PI/2} ${J_PI/2}"
+      joint_origin_rpy="0 ${-J_PI/2} ${J_PI}"
     />
     <xacro:articutool_link
       link_name="atool_base"
