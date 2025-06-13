@@ -23,6 +23,12 @@ from std_msgs.msg import Float64MultiArray
 from articutool_interfaces.srv import SetOrientationControl
 from articutool_interfaces.msg import ImuCalibrationStatus
 from articutool_interfaces.action import ExecuteArticutoolPrimitive
+from .primitives import (
+    PrimitiveAction,
+    TwirlPrimitive,
+    VibratePrimitive,
+    DepositBitePrimitive,
+)
 
 import numpy as np
 import math
@@ -82,11 +88,8 @@ class ArticutoolController(Node):
         self.last_error_full_orientation = np.zeros(3)
         self.integral_error_full_orientation = np.zeros(3)
 
+        self.active_primitive: Optional[PrimitiveAction] = None
         self.active_primitive_goal_handle: Optional[ServerGoalHandle] = None
-        self.current_primitive_name: Optional[str] = None
-        self.current_primitive_params: List[float] = []
-        self.primitive_start_time: Optional[Time] = None
-        self.primitive_internal_state: Dict[str, Any] = {}
 
         self.last_uncalibrated_imu_msg_time: Optional[Time] = None
         self.current_filterworld_to_imu_raw: Optional[R] = None
@@ -98,6 +101,16 @@ class ArticutoolController(Node):
         self.last_external_calibration_time: Optional[Time] = None
         self.current_joint_positions: Optional[np.ndarray] = None
         self.last_time: Optional[Time] = None
+
+        # --- Primitive Registry ---
+        self.primitive_registry: Dict[str, type[PrimitiveAction]] = {
+            "TWIRL_CW": TwirlPrimitive,
+            "TWIRL_CCW": TwirlPrimitive,
+            "VIBRATE_ROLL": VibratePrimitive,
+            "DEPOSIT_BITE": DepositBitePrimitive,
+            # Add new primitives here, e.g.:
+            # "SIFT_AND_CENTER": SiftAndCenterPrimitive,
+        }
 
         self.add_on_set_parameters_callback(self.parameters_callback)
 
@@ -541,77 +554,83 @@ class ArticutoolController(Node):
         return GoalResponse.ACCEPT
 
     def execute_primitive_callback(self, goal_handle: ServerGoalHandle):
-        self.active_primitive_goal_handle = goal_handle
-        self.current_primitive_name = goal_handle.request.primitive_name
-        self.current_primitive_params = list(goal_handle.request.parameters)
-        self.primitive_start_time = self.get_clock().now()
-        self.primitive_internal_state = {}
-        self.get_logger().info(
-            f"Executing primitive: '{self.current_primitive_name}' with params {self.current_primitive_params}"
+        primitive_name = goal_handle.request.primitive_name
+        self.get_logger().info(f"Executing primitive request: '{primitive_name}'")
+
+        if primitive_name not in self.primitive_registry:
+            self.get_logger().error(f"Unknown primitive '{primitive_name}'. Aborting.")
+            goal_handle.abort()
+            result = ExecuteArticutoolPrimitive.Result()
+            result.success = False
+            result.message = f"Unknown primitive name: {primitive_name}"
+            return result
+
+        if self.current_joint_positions is None:
+            self.get_logger().error(
+                "Cannot start primitive: current joint positions are unknown. Aborting."
+            )
+            goal_handle.abort()
+            result = ExecuteArticutoolPrimitive.Result()
+            result.success = False
+            result.message = "Initial joint positions unknown."
+            return result
+
+        # Instantiate the correct primitive class
+        primitive_class = self.primitive_registry[primitive_name]
+        params = list(goal_handle.request.parameters)
+
+        # Special handling for TWIRL_CCW
+        if primitive_name == "TWIRL_CCW":
+            if params:
+                params[0] = -abs(params[0])  # Make target rotations negative
+
+        self.active_primitive = primitive_class(
+            node_logger=self.get_logger(), params=params
         )
-        primitive_name_for_logging = str(self.current_primitive_name)
+        self.active_primitive_goal_handle = goal_handle
+
+        # Call the primitive's own start method
+        self.active_primitive.start(self.current_joint_positions)
+
+        # The rest of the action lifecycle is managed by the control_loop checking the instance
+        # and this callback waiting for completion.
+
         try:
             while (
                 rclpy.ok()
                 and self.active_primitive_goal_handle == goal_handle
                 and goal_handle.is_active
             ):
-                if not goal_handle.is_active:
-                    self.get_logger().info(
-                        f"Primitive '{primitive_name_for_logging}' handle became inactive, exiting execute loop."
-                    )
-                    break
-                time.sleep(1.0 / (self.rate * 2.0) if self.rate > 0 else 0.05)
+                time.sleep(0.05)  # Poll for completion
+
             self.get_logger().debug(
-                f"Primitive '{primitive_name_for_logging}' execution loop finished. Final ROS goal status: {goal_handle.status}"
+                f"Primitive '{primitive_name}' execution loop finished. Final status: {goal_handle.status}"
             )
+
         except Exception as e:
             self.get_logger().error(
-                f"Exception in execute_primitive_callback for '{primitive_name_for_logging}': {e}\n{traceback.format_exc()}"
+                f"Exception in execute_primitive_callback for '{primitive_name}': {e}\n{traceback.format_exc()}"
             )
-            if (
-                self.active_primitive_goal_handle == goal_handle
-                and goal_handle.is_active
-            ):
+            if goal_handle.is_active:
                 goal_handle.abort()
+
         finally:
+            # Construct result based on final handle state
             result = ExecuteArticutoolPrimitive.Result()
-            status_for_log = goal_handle.status
             if goal_handle.status == GoalStatus.STATUS_SUCCEEDED:
                 result.success = True
-                result.message = (
-                    f"Primitive '{goal_handle.request.primitive_name}' succeeded."
-                )
-            elif goal_handle.status == GoalStatus.STATUS_ABORTED:
+                result.message = f"Primitive '{primitive_name}' succeeded."
+            else:  # Aborted or Canceled
                 result.success = False
-                result.message = (
-                    f"Primitive '{goal_handle.request.primitive_name}' aborted."
-                )
-            elif goal_handle.status == GoalStatus.STATUS_CANCELED:
-                result.success = False
-                result.message = (
-                    f"Primitive '{goal_handle.request.primitive_name}' canceled."
-                )
-            else:
-                result.success = False
-                result.message = f"Primitive '{goal_handle.request.primitive_name}' finished with unexpected status: {goal_handle.status}."
-                if goal_handle.is_active:
-                    self.get_logger().warn(
-                        f"Goal for '{goal_handle.request.primitive_name}' was still active in finally (status: {goal_handle.status}); forcing abort."
-                    )
-                    goal_handle.abort()
-                    result.message += " Explicitly aborted in finally."
-                    status_for_log = GoalStatus.STATUS_ABORTED
+                result.message = f"Primitive '{primitive_name}' did not succeed (status: {goal_handle.status})."
+
             if self.current_joint_positions is not None:
                 result.final_joint_values = list(self.current_joint_positions)
-            else:
-                result.final_joint_values = []
-            self.get_logger().info(
-                f"Returning result for primitive '{goal_handle.request.primitive_name}': {result.message} (Success: {result.success}, Final ROS Action Status: {status_for_log})"
-            )
+
             if self.active_primitive_goal_handle == goal_handle:
+                self.active_primitive = None  # Clear instance
                 self.active_primitive_goal_handle = None
-                self.current_primitive_name = None
+
             return result
 
     def primitive_cancel_callback(self, cancel_request_goal_handle: ServerGoalHandle):
@@ -715,181 +734,44 @@ class ArticutoolController(Node):
                 pass
 
     def _update_active_primitive(self, dt: float) -> Tuple[np.ndarray, bool]:
-        goal_handle = self.active_primitive_goal_handle
-        if goal_handle is None or not goal_handle.is_active:
+        # This check should be redundant if logic is correct, but is a good safeguard
+        if self.active_primitive is None or self.active_primitive_goal_handle is None:
             return np.zeros(2), True
-        if goal_handle.is_cancel_requested:
-            self.get_logger().info(
-                f"Primitive '{self.current_primitive_name}' cancelling."
+
+        if not self.active_primitive_goal_handle.is_active:
+            self.active_primitive = None
+            self.active_primitive_goal_handle = None
+            return np.zeros(2), True
+
+        if self.active_primitive.is_finished:
+            if self.active_primitive.was_successful:
+                self.active_primitive_goal_handle.succeed()
+            else:
+                self.active_primitive_goal_handle.abort()
+            # The execute_primitive_callback will see the handle is no longer active and return
+            return np.zeros(2), True
+
+        if self.current_joint_positions is None:
+            self.get_logger().error(
+                "Aborting primitive: joint positions became unknown during execution."
             )
-            goal_handle.canceled()
+            self.active_primitive_goal_handle.abort()
             return np.zeros(2), True
+
+        # Run the primitive's update logic
+        dq_command, feedback_string, percent_complete = self.active_primitive.update(
+            dt, self.current_joint_positions
+        )
+
+        # Publish feedback
         feedback_msg = ExecuteArticutoolPrimitive.Feedback()
-        feedback_msg.feedback_string = f"Executing {self.current_primitive_name}"
+        feedback_msg.feedback_string = feedback_string
+        feedback_msg.percent_complete = percent_complete
         if self.current_joint_positions is not None:
             feedback_msg.current_joint_values = list(self.current_joint_positions)
-        else:
-            feedback_msg.current_joint_values = []
-        dq_primitive = np.zeros(2)
-        is_finished_this_tick = False
-        primitive_succeeded = False
-        try:
-            if self.current_primitive_name == "TWIRL_CW":
-                if (
-                    not self.current_primitive_params
-                    or len(self.current_primitive_params) < 2
-                ):
-                    self.get_logger().error("TWIRL_CW: Missing params")
-                    is_finished_this_tick = True
-                    primitive_succeeded = False
-                elif self.current_joint_positions is None:
-                    self.get_logger().error("TWIRL_CW: No joint_positions")
-                    is_finished_this_tick = True
-                    primitive_succeeded = False
-                else:
-                    target_rotations, speed_rad_per_sec = (
-                        self.current_primitive_params[0],
-                        abs(self.current_primitive_params[1]),
-                    )
-                    if "accumulated_roll_rad" not in self.primitive_internal_state:
-                        self.primitive_internal_state["accumulated_roll_rad"] = 0.0
-                    target_total_delta = target_rotations * 2 * math.pi
-                    current_delta = self.primitive_internal_state[
-                        "accumulated_roll_rad"
-                    ]
-                    if abs(current_delta) < abs(target_total_delta) - self.EPSILON:
-                        remaining_delta = target_total_delta - current_delta
-                        vel = np.sign(remaining_delta) * speed_rad_per_sec
-                        if abs(vel * dt) > abs(remaining_delta):
-                            vel = remaining_delta / dt if dt > self.EPSILON else 0.0
-                        dq_primitive[1] = vel
-                        self.primitive_internal_state["accumulated_roll_rad"] += (
-                            dq_primitive[1] * dt
-                        )
-                        feedback_msg.percent_complete = min(
-                            1.0,
-                            max(
-                                0.0,
-                                float(
-                                    abs(
-                                        self.primitive_internal_state[
-                                            "accumulated_roll_rad"
-                                        ]
-                                        / target_total_delta
-                                    )
-                                    if target_total_delta != 0
-                                    else 1.0
-                                ),
-                            ),
-                        )
-                        feedback_msg.feedback_string = f"Twirling CW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_delta:.2f} rad"
-                    else:
-                        is_finished_this_tick = True
-                        primitive_succeeded = True
-            elif self.current_primitive_name == "TWIRL_CCW":
-                if (
-                    not self.current_primitive_params
-                    or len(self.current_primitive_params) < 2
-                ):
-                    is_finished_this_tick = True
-                    primitive_succeeded = False
-                elif self.current_joint_positions is None:
-                    is_finished_this_tick = True
-                    primitive_succeeded = False
-                else:
-                    target_rotations, speed_rad_per_sec = (
-                        self.current_primitive_params[0],
-                        abs(self.current_primitive_params[1]),
-                    )
-                    if "accumulated_roll_rad" not in self.primitive_internal_state:
-                        self.primitive_internal_state["accumulated_roll_rad"] = 0.0
-                    target_total_delta = -target_rotations * 2 * math.pi
-                    current_delta = self.primitive_internal_state[
-                        "accumulated_roll_rad"
-                    ]
-                    if abs(current_delta) < abs(target_total_delta) - self.EPSILON:
-                        remaining_delta = target_total_delta - current_delta
-                        vel = np.sign(remaining_delta) * speed_rad_per_sec
-                        if abs(vel * dt) > abs(remaining_delta):
-                            vel = remaining_delta / dt if dt > self.EPSILON else 0.0
-                        dq_primitive[1] = vel
-                        self.primitive_internal_state["accumulated_roll_rad"] += (
-                            dq_primitive[1] * dt
-                        )
-                        feedback_msg.percent_complete = min(
-                            1.0,
-                            max(
-                                0.0,
-                                float(
-                                    abs(
-                                        self.primitive_internal_state[
-                                            "accumulated_roll_rad"
-                                        ]
-                                        / target_total_delta
-                                    )
-                                    if target_total_delta != 0
-                                    else 1.0
-                                ),
-                            ),
-                        )
-                        feedback_msg.feedback_string = f"Twirling CCW: Accum={self.primitive_internal_state['accumulated_roll_rad']:.2f} / TargetDelta={target_total_delta:.2f} rad"
-                    else:
-                        is_finished_this_tick = True
-                        primitive_succeeded = True
-            elif self.current_primitive_name == "VIBRATE_ROLL":
-                if (
-                    not self.current_primitive_params
-                    or len(self.current_primitive_params) < 3
-                ):
-                    is_finished_this_tick = True
-                    primitive_succeeded = False
-                else:
-                    frequency_hz, amplitude_rad, duration_sec = (
-                        self.current_primitive_params
-                    )
-                    if "time_elapsed_sec" not in self.primitive_internal_state:
-                        self.primitive_internal_state["time_elapsed_sec"] = 0.0
-                    self.primitive_internal_state["time_elapsed_sec"] += dt
-                    time_elapsed = self.primitive_internal_state["time_elapsed_sec"]
-                    if time_elapsed < duration_sec:
-                        current_phase = 2 * math.pi * frequency_hz * time_elapsed
-                        dq_primitive[1] = (
-                            amplitude_rad
-                            * (2 * math.pi * frequency_hz)
-                            * math.cos(current_phase)
-                        )
-                        feedback_msg.percent_complete = float(
-                            time_elapsed / duration_sec
-                        )
-                        feedback_msg.feedback_string = f"Vibrating roll: {time_elapsed:.2f} / {duration_sec:.2f} sec"
-                    else:
-                        is_finished_this_tick = True
-                        primitive_succeeded = True
-            else:
-                feedback_msg.feedback_string = (
-                    f"Unknown primitive: '{self.current_primitive_name}'"
-                )
-                self.get_logger().error(feedback_msg.feedback_string)
-                is_finished_this_tick = True
-                primitive_succeeded = False
-        except Exception as e:
-            self.get_logger().error(
-                f"Exception during primitive '{self.current_primitive_name}' execution: {e}\n{traceback.format_exc()}"
-            )
-            is_finished_this_tick = True
-            primitive_succeeded = False
-            feedback_msg.feedback_string = f"Error: {e}"
-        if goal_handle.is_active:
-            goal_handle.publish_feedback(feedback_msg)
-        if is_finished_this_tick:
-            self.get_logger().info(
-                f"Primitive '{self.current_primitive_name}' finished in _update. Success: {primitive_succeeded}"
-            )
-            if primitive_succeeded:
-                goal_handle.succeed()
-            else:
-                goal_handle.abort()
-        return dq_primitive, is_finished_this_tick
+        self.active_primitive_goal_handle.publish_feedback(feedback_msg)
+
+        return dq_command, False  # Not finished yet
 
     def control_loop(self):
         now = self.get_clock().now()
