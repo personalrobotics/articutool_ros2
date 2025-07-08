@@ -213,3 +213,92 @@ class DepositBitePrimitive(PrimitiveAction):
             )
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
+
+
+class SettleTossPrimitive(PrimitiveAction):
+    """
+    Primitive to settle food in a spoon with a controlled pitch-flick motion.
+    This is designed to be more effective than simple vibration.
+    """
+
+    def start(self, current_joint_positions: np.ndarray) -> None:
+        super().start(current_joint_positions)
+        # Params: [tilt_angle_deg, tilt_speed_rps, flick_speed_rps]
+        if len(self.params) < 3:
+            self.logger.error(
+                f"[{self.__class__.__name__}] requires 3 parameters: "
+                "[tilt_angle_deg, tilt_speed_rps, flick_speed_rps]."
+            )
+            self._is_finished = True
+            self._was_successful = False
+            return
+
+        self.tilt_angle_rad = math.radians(self.params[0])
+        self.tilt_speed_rps = abs(self.params[1])
+        self.flick_speed_rps = abs(self.params[2])
+
+        # Store the starting position to return to it
+        self.start_pitch_rad = current_joint_positions[0]
+
+        # State machine for the motion
+        self.state = "TILT_BACK"  # States: TILT_BACK, FLICK_FORWARD, RETURN_TO_LEVEL
+        self.tolerance = 0.05  # Radians
+
+    def update(
+        self, dt: float, current_joint_positions: np.ndarray
+    ) -> Tuple[np.ndarray, str, float]:
+        dq_command = np.zeros(2)
+        feedback_string = ""
+        percent_complete = 0.0
+        current_pitch = current_joint_positions[0]
+
+        if self.state == "TILT_BACK":
+            feedback_string = "Settling: Tilting back..."
+            target_pitch = self.start_pitch_rad - self.tilt_angle_rad
+            error = target_pitch - current_pitch
+
+            if abs(error) < self.tolerance:
+                self.state = "FLICK_FORWARD"
+            else:
+                velocity = -self.tilt_speed_rps  # Move in negative direction
+                dq_command[0] = velocity
+            percent_complete = (
+                abs(current_pitch - self.start_pitch_rad)
+                / abs(self.tilt_angle_rad)
+                / 3.0
+            )
+
+        elif self.state == "FLICK_FORWARD":
+            feedback_string = "Settling: Flicking forward..."
+            # Target is slightly past the start position to create a jolt
+            target_pitch = self.start_pitch_rad + self.tolerance * 2
+            error = target_pitch - current_pitch
+
+            if error < 0:  # We have passed the target
+                self.state = "RETURN_TO_LEVEL"
+            else:
+                velocity = self.flick_speed_rps  # Move in positive direction
+                dq_command[0] = velocity
+            percent_complete = (
+                1 / 3
+                + abs(current_pitch - (self.start_pitch_rad - self.tilt_angle_rad))
+                / abs(self.tilt_angle_rad)
+                / 3.0
+            )
+
+        elif self.state == "RETURN_TO_LEVEL":
+            feedback_string = "Settling: Returning to start..."
+            target_pitch = self.start_pitch_rad
+            error = target_pitch - current_pitch
+
+            if abs(error) < self.tolerance:
+                self._is_finished = True
+                self._was_successful = True
+                dq_command[0] = 0.0  # Ensure we stop
+            else:
+                # Return slowly and smoothly
+                velocity = np.sign(error) * self.tilt_speed_rps
+                dq_command[0] = velocity
+            percent_complete = 2 / 3 + (1.0 - abs(error / self.tilt_angle_rad)) / 3.0
+
+        return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))

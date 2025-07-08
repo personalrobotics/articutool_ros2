@@ -25,6 +25,7 @@ from articutool_interfaces.msg import ImuCalibrationStatus
 from articutool_interfaces.action import ExecuteArticutoolPrimitive
 from .primitives import (
     PrimitiveAction,
+    SettleTossPrimitive,
     TwirlPrimitive,
     VibratePrimitive,
     DepositBitePrimitive,
@@ -108,6 +109,7 @@ class ArticutoolController(Node):
             "TWIRL_CCW": TwirlPrimitive,
             "VIBRATE_ROLL": VibratePrimitive,
             "DEPOSIT_BITE": DepositBitePrimitive,
+            "SETTLE_TOSS": SettleTossPrimitive,
             # Add new primitives here, e.g.:
             # "SIFT_AND_CENTER": SiftAndCenterPrimitive,
         }
