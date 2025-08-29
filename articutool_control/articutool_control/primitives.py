@@ -55,6 +55,66 @@ class PrimitiveAction:
     def was_successful(self) -> bool:
         """Returns True if the action finished successfully, False otherwise."""
         return self._was_successful
+        
+class DumpPrimitive(PrimitiveAction):
+    """Primitive for dumping some of the aquired liquid."""
+
+    def start(self, current_joint_positions: np.ndarray) -> None:
+        super().start(current_joint_positions)
+        if len(self.params) < 2:
+            self.logger.error(
+                f"[{self.__class__.__name__}] requires 2 parameters: [target_rotations, speed_rad_per_sec]. Got {len(self.params)}."
+            )
+            self._is_finished = True
+            self._was_successful = False
+            return
+        else:
+            self.dump_is_finished = False # bc dump needs to complete before reorientation
+            self.target_total_delta_rad = math.pi / 3 # predefined amount to rotate
+            self.speed_rad_per_sec = abs(self.params[1]) # make sure positive
+            self.accumulated_rad = 0.0 # starts at zero
+    
+    def update(
+        self, dt: float, current_joint_positions: np.ndarray
+    ) -> Tuple[np.ndarray, str, float]:
+        dq_command = np.zeros(2)
+        remaining_delta = self.target_total_delta_rad - self.accumulated_rad
+
+        if abs(remaining_delta) & (self.dump_is_finished) < 1e-3:
+            feedback_string = "Dump and Reorient completed."
+            self._is_finished = True
+            self._was_successful = True
+            percent_complete = 1.0
+
+            return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
+
+        elif abs(remaining_delta) < 1e-3:
+            feedback_string = "Dump completed."
+            self.dump_is_finished = True
+
+            self.target_total_delta_rad = -math.pi / 3 # predefined amount to rotate
+            self.speed_rad_per_sec = abs(self.params[1]) # make sure positive
+            self.accumulated_rad = 0.0 # starts at zero
+
+            percent_complete = 0.0
+
+        velocity = np.sign(remaining_delta) * self.speed_rad_per_sec
+        if abs(velocity * dt) > abs(remaining_delta):
+            velocity = remaining_delta / dt if dt > 1e-6 else 0.0
+
+        dq_command[1] = velocity  # Roll is joint index 1
+        self.accumulated_rad += dq_command[1] * dt
+
+        percent_complete = (
+            abs(self.accumulated_rad / self.target_total_delta_rad)
+            if self.target_total_delta_rad != 0
+            else 1.0
+        )
+        feedback_string = f"Dumping: Accum={self.accumulated_rad:.2f} / Target={self.target_total_delta_rad:.2f} rad"
+
+        return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
+
+
 
 
 class TwirlPrimitive(PrimitiveAction):
