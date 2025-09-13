@@ -91,6 +91,7 @@ class ArticutoolController(Node):
 
         self.active_primitive: Optional[PrimitiveAction] = None
         self.active_primitive_goal_handle: Optional[ServerGoalHandle] = None
+        self.primitive_is_initialized: bool = False
 
         self.last_uncalibrated_imu_msg_time: Optional[Time] = None
         self.current_filterworld_to_imu_raw: Optional[R] = None
@@ -590,9 +591,11 @@ class ArticutoolController(Node):
             node_logger=self.get_logger(), params=params
         )
         self.active_primitive_goal_handle = goal_handle
+        self.primitive_is_initialized = False
 
         # Call the primitive's own start method
         self.active_primitive.start(self.current_joint_positions)
+        self.primitive_is_initialized = True
 
         # The rest of the action lifecycle is managed by the control_loop checking the instance
         # and this callback waiting for completion.
@@ -632,6 +635,7 @@ class ArticutoolController(Node):
             if self.active_primitive_goal_handle == goal_handle:
                 self.active_primitive = None  # Clear instance
                 self.active_primitive_goal_handle = None
+                self.primitive_is_initialized = False  # <-- RESET FLAG HERE
 
             return result
 
@@ -744,7 +748,9 @@ class ArticutoolController(Node):
             self.active_primitive = None
             self.active_primitive_goal_handle = None
             return np.zeros(2), True
-
+        if not self.primitive_is_initialized:
+            # Not ready yet, command zero velocity and wait for initialization
+            return np.zeros(2), False
         if self.active_primitive.is_finished:
             if self.active_primitive.was_successful:
                 self.active_primitive_goal_handle.succeed()
