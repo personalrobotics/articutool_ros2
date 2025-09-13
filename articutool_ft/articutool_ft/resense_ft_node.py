@@ -33,7 +33,7 @@ class ResenseFtNode(Node):
     DATA_PACKET_SIZE = 28
     NUM_VALUES = 7
     STRUCT_FORMAT = "<fffffff"
-    SAMPLES_FOR_TARE = 100
+    SAMPLES_FOR_TARE = 10
 
     def __init__(self):
         super().__init__("resense_ft_node")
