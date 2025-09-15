@@ -127,7 +127,7 @@
 
   <xacro:macro
     name="articutool"
-    params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0'"
+    params="base_parent end_effector_tool joint_origin_xyz:='0 0 0' joint_origin_rpy:='0 0 0' lock_joints:=false"
   >
     <xacro:property
       name="xyz_list"
@@ -300,7 +300,7 @@
     </xacro:articutool_link>
     <xacro:articutool_joint
       joint_name="atool_joint1"
-      type="revolute"
+      type="${'fixed' if lock_joints else 'revolute'}"
       parent="atool_base"
       child="atool_link1"
       joint_axis_xyz="0 0 -1"
@@ -362,7 +362,7 @@
     </xacro:articutool_link>
     <xacro:articutool_joint
       joint_name="atool_joint2"
-      type="revolute"
+      type="${'fixed' if lock_joints else 'revolute'}"
       parent="atool_link2"
       child="atool_ft_adapter"
       joint_axis_xyz="0 1 0"
