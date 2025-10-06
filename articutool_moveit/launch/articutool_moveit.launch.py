@@ -189,7 +189,7 @@ def generate_launch_description():
         # Static Virtual Joints
         *generate_static_virtual_joint_tfs_launch(moveit_config).entities,
         # Robot State Publisher
-        *generate_rsp_launch(moveit_config).entities,
+        # *generate_rsp_launch(moveit_config).entities,
         # RViz
         GroupAction(
             actions=generate_moveit_rviz_launch(moveit_config).entities,
