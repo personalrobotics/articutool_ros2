@@ -71,6 +71,14 @@ def generate_launch_description():
     )
     u2d2_port = LaunchConfiguration("u2d2_port")
 
+    # Declare lock_joints launch argument
+    lock_joints_da = DeclareLaunchArgument(
+        "lock_joints",
+        default_value="false",
+        description="Whether to lock the Articutool joints, setting them as fixed",
+    )
+    lock_joints = LaunchConfiguration("lock_joints")
+
     # Controllers File
     ctrl_da = DeclareLaunchArgument(
         "controllers_file",
@@ -105,6 +113,7 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(sim_da)
     ld.add_action(eet_da)
+    ld.add_action(lock_joints_da)
     ld.add_action(ctrl_da)
     ld.add_action(log_level_da)
     ld.add_action(u2d2_port_da)
@@ -118,6 +127,7 @@ def generate_launch_description():
             "sim": sim,
             "end_effector_tool": end_effector_tool,
             "u2d2_port": u2d2_port,
+            "lock_joints": lock_joints,
             "launch_controllers": launch_controllers,
         }
     )

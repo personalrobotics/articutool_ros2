@@ -24,6 +24,10 @@
     default="/dev/u2d2"
   />
   <xacro:arg
+    name="lock_joints"
+    default="false"
+  />
+  <xacro:arg
     name="launch_controllers"
     default="true"
   />
@@ -54,6 +58,7 @@
     end_effector_tool="${end_effector_tool}"
     joint_origin_xyz="$(arg joint_origin_xyz)"
     joint_origin_rpy="$(arg joint_origin_rpy)"
+    lock_joints="$(arg lock_joints)"
   />
 
   <xacro:if value="$(arg launch_controllers)">

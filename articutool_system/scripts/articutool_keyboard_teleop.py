@@ -39,7 +39,7 @@ JOINT_NAMES = [
     "atool_joint1",
     "atool_joint2",
 ]
-JOINT_VEL_CMD = 0.5  # rad/s
+JOINT_VEL_CMD = 3.14  # rad/s
 JOINT_POS_CMD = 0.1  # rad
 ORIENTATION_CMD = 0.1  # Quaternion change
 COMMAND_KEYS = ["1", "2"]
