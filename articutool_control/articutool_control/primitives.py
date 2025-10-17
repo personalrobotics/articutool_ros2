@@ -323,9 +323,9 @@ class NoodleShedPrimitive(PrimitiveAction):
             return
 
         # --- Parameters ---
-        self.unwind_angle_rad = math.radians(abs(self.params[0]))
+        self.unwind_angle_rad = math.radians(self.params[0])
         self.unwind_speed_rps = abs(self.params[1])
-        self.flick_angle_rad = math.radians(abs(self.params[2]))
+        self.flick_angle_rad = math.radians(self.params[2])
         self.flick_speed_rps = abs(self.params[3])
 
         # --- Initial State ---
@@ -348,31 +348,34 @@ class NoodleShedPrimitive(PrimitiveAction):
 
         if self.state == "UNWINDING":
             feedback_string = "Shedding: Unwinding stragglers..."
-            target_roll = self.start_roll_rad - self.unwind_angle_rad
+            target_roll = self.start_roll_rad + self.unwind_angle_rad
             error = target_roll - current_roll
 
             if abs(error) < self.tolerance:
                 self.state = "FLICKING_DOWN"
             else:
-                # Command a negative velocity to unwind
-                dq_command[1] = -self.unwind_speed_rps
+                # Direction is now determined by the sign of the error
+                dq_command[1] = np.sign(error) * self.unwind_speed_rps
             percent_complete = (
-                abs(current_roll - self.start_roll_rad) / self.unwind_angle_rad
+                abs(current_roll - self.start_roll_rad) / abs(self.unwind_angle_rad)
             ) / 4.0
 
         elif self.state == "FLICKING_DOWN":
             feedback_string = "Shedding: Inertial flick..."
-            target_pitch = self.start_pitch_rad - self.flick_angle_rad
+            target_pitch = self.start_pitch_rad + self.flick_angle_rad
             error = target_pitch - current_pitch
 
             if abs(error) < self.tolerance:
                 self.state = "RETURNING_PITCH"
             else:
-                # Command a negative velocity for the downward flick
-                dq_command[0] = -self.flick_speed_rps
+                # Direction is determined by the sign of the error
+                dq_command[0] = np.sign(error) * self.flick_speed_rps
             percent_complete = (
                 0.25
-                + (abs(current_pitch - self.start_pitch_rad) / self.flick_angle_rad)
+                + (
+                    abs(current_pitch - self.start_pitch_rad)
+                    / abs(self.flick_angle_rad)
+                )
                 / 4.0
             )
 
@@ -384,8 +387,8 @@ class NoodleShedPrimitive(PrimitiveAction):
             if abs(error) < self.tolerance:
                 self.state = "REWINDING"
             else:
-                # Command a positive velocity to return to level
-                dq_command[0] = self.flick_speed_rps
+                # Direction is determined by the sign of the error
+                dq_command[0] = np.sign(error) * self.flick_speed_rps
             percent_complete = 0.5 + (1.0 - abs(error / self.flick_angle_rad)) / 4.0
 
         elif self.state == "REWINDING":
@@ -398,8 +401,8 @@ class NoodleShedPrimitive(PrimitiveAction):
                 self._was_successful = True
                 dq_command.fill(0.0)  # Ensure we stop
             else:
-                # Command a positive velocity to rewind to zero
-                dq_command[1] = self.unwind_speed_rps
+                # Direction is determined by the sign of the error
+                dq_command[1] = np.sign(error) * self.unwind_speed_rps
             percent_complete = 0.75 + (1.0 - abs(error / self.unwind_angle_rad)) / 4.0
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
