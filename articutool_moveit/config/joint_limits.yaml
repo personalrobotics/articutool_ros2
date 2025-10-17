@@ -7,11 +7,11 @@ default_acceleration_scaling_factor: 0.1
 joint_limits:
   atool_joint1:
     has_velocity_limits: true
-    max_velocity: 0.83775804095727813
+    max_velocity: 4.0
     has_acceleration_limits: false
     max_acceleration: 0
   atool_joint2:
     has_velocity_limits: true
-    max_velocity: 0.83775804095727813
+    max_velocity: 4.0
     has_acceleration_limits: false
     max_acceleration: 0
