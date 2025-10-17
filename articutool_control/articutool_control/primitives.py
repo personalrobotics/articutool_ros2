@@ -369,7 +369,7 @@ class NoodleShedPrimitive(PrimitiveAction):
                 self.state = "RETURNING_PITCH"
             else:
                 # Command a negative velocity for the downward flick
-                dq_command[0] = -self.flick_speed_rps
+                dq_command[0] = self.flick_speed_rps
             percent_complete = (
                 0.25
                 + (abs(current_pitch - self.start_pitch_rad) / self.flick_angle_rad)
@@ -385,7 +385,7 @@ class NoodleShedPrimitive(PrimitiveAction):
                 self.state = "REWINDING"
             else:
                 # Command a positive velocity to return to level
-                dq_command[0] = self.flick_speed_rps
+                dq_command[0] = -self.flick_speed_rps
             percent_complete = 0.5 + (1.0 - abs(error / self.flick_angle_rad)) / 4.0
 
         elif self.state == "REWINDING":
