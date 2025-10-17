@@ -217,10 +217,10 @@ class ArticutoolController(Node):
             "joint_names", ["atool_joint1", "atool_joint2"], str_array_desc
         )
         self.declare_parameter(
-            "joint_limits.lower", [-math.pi / 2.0, -10 * math.pi], dbl_array_desc
+            "joint_limits.lower", [-math.pi / 2.0, -13 * math.pi], dbl_array_desc
         )
         self.declare_parameter(
-            "joint_limits.upper", [math.pi / 2.0, 10 * math.pi], dbl_array_desc
+            "joint_limits.upper", [math.pi / 2.0, 13 * math.pi], dbl_array_desc
         )
         self.declare_parameter(
             "joint_limits.threshold",
