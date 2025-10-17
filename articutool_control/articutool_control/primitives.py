@@ -302,3 +302,104 @@ class SettleTossPrimitive(PrimitiveAction):
             percent_complete = 2 / 3 + (1.0 - abs(error / self.tilt_angle_rad)) / 3.0
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
+
+
+class NoodleShedPrimitive(PrimitiveAction):
+    """
+    Primitive to shed loose noodles after a twirl acquisition.
+    It performs a rapid partial unwind, a sharp pitch flick, and a rewind.
+    """
+
+    def start(self, current_joint_positions: np.ndarray) -> None:
+        super().start(current_joint_positions)
+        # Params: [unwind_angle_deg, unwind_speed_rps, flick_angle_deg, flick_speed_rps]
+        if len(self.params) < 4:
+            self.logger.error(
+                f"[{self.__class__.__name__}] requires 4 parameters: "
+                "[unwind_angle_deg, unwind_speed_rps, flick_angle_deg, flick_speed_rps]."
+            )
+            self._is_finished = True
+            self._was_successful = False
+            return
+
+        # --- Parameters ---
+        self.unwind_angle_rad = math.radians(abs(self.params[0]))
+        self.unwind_speed_rps = abs(self.params[1])
+        self.flick_angle_rad = math.radians(abs(self.params[2]))
+        self.flick_speed_rps = abs(self.params[3])
+
+        # --- Initial State ---
+        self.start_pitch_rad = current_joint_positions[0]
+        self.start_roll_rad = current_joint_positions[1]
+        self.tolerance = 0.05  # Radians
+
+        # --- State Machine ---
+        # UNWINDING -> FLICKING_DOWN -> RETURNING_PITCH -> REWINDING
+        self.state = "UNWINDING"
+
+    def update(
+        self, dt: float, current_joint_positions: np.ndarray
+    ) -> Tuple[np.ndarray, str, float]:
+        dq_command = np.zeros(2)
+        feedback_string = ""
+        percent_complete = 0.0
+        current_pitch = current_joint_positions[0]
+        current_roll = current_joint_positions[1]
+
+        if self.state == "UNWINDING":
+            feedback_string = "Shedding: Unwinding stragglers..."
+            target_roll = self.start_roll_rad - self.unwind_angle_rad
+            error = target_roll - current_roll
+
+            if abs(error) < self.tolerance:
+                self.state = "FLICKING_DOWN"
+            else:
+                # Command a negative velocity to unwind
+                dq_command[1] = -self.unwind_speed_rps
+            percent_complete = (
+                abs(current_roll - self.start_roll_rad) / self.unwind_angle_rad
+            ) / 4.0
+
+        elif self.state == "FLICKING_DOWN":
+            feedback_string = "Shedding: Inertial flick..."
+            target_pitch = self.start_pitch_rad - self.flick_angle_rad
+            error = target_pitch - current_pitch
+
+            if abs(error) < self.tolerance:
+                self.state = "RETURNING_PITCH"
+            else:
+                # Command a negative velocity for the downward flick
+                dq_command[0] = -self.flick_speed_rps
+            percent_complete = (
+                0.25
+                + (abs(current_pitch - self.start_pitch_rad) / self.flick_angle_rad)
+                / 4.0
+            )
+
+        elif self.state == "RETURNING_PITCH":
+            feedback_string = "Shedding: Resetting pitch..."
+            target_pitch = self.start_pitch_rad
+            error = target_pitch - current_pitch
+
+            if abs(error) < self.tolerance:
+                self.state = "REWINDING"
+            else:
+                # Command a positive velocity to return to level
+                dq_command[0] = self.flick_speed_rps
+            percent_complete = 0.5 + (1.0 - abs(error / self.flick_angle_rad)) / 4.0
+
+        elif self.state == "REWINDING":
+            feedback_string = "Shedding: Securing noodle core..."
+            target_roll = self.start_roll_rad
+            error = target_roll - current_roll
+
+            if abs(error) < self.tolerance:
+                self._is_finished = True
+                self._was_successful = True
+                dq_command.fill(0.0)  # Ensure we stop
+            else:
+                # Command a positive velocity to rewind to zero
+                dq_command[1] = self.unwind_speed_rps
+            percent_complete = 0.75 + (1.0 - abs(error / self.unwind_angle_rad)) / 4.0
+
+        return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
