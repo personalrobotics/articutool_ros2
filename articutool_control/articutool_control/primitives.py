@@ -307,17 +307,18 @@ class SettleTossPrimitive(PrimitiveAction):
 class NoodleShedPrimitive(PrimitiveAction):
     """
     Primitive to congregate and tighten noodles after acquisition.
-    It performs a pitch-up to gather noodles, a counter-clockwise
-    twirl to tighten, and a return-pitch to level.
+    It performs a pitch-up, waits for a specified delay to
+    let noodles settle, performs a counter-clockwise twirl,
+    and finally returns the pitch to level.
     """
 
     def start(self, current_joint_positions: np.ndarray) -> None:
         super().start(current_joint_positions)
-        # Params: [pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps]
-        if len(self.params) < 4:
+        # Params: [pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps, delay_sec]
+        if len(self.params) < 5:
             self.logger.error(
-                f"[{self.__class__.__name__}] requires 4 parameters: "
-                "[pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps]."
+                f"[{self.__class__.__name__}] requires 5 parameters: "
+                "[pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps, delay_sec]."
             )
             self._is_finished = True
             self._was_successful = False
@@ -328,14 +329,16 @@ class NoodleShedPrimitive(PrimitiveAction):
         self.pitch_speed_rps = abs(self.params[1])
         self.twirl_angle_rad = math.radians(self.params[2])
         self.twirl_speed_rps = abs(self.params[3])
+        self.delay_sec = abs(self.params[4])
 
         # --- Initial State ---
         self.start_pitch_rad = current_joint_positions[0]
         self.start_roll_rad = current_joint_positions[1]
         self.tolerance = 0.05  # Radians
+        self.delay_timer = 0.0  # Timer for the new delay state
 
         # --- State Machine ---
-        # PITCHING_UP -> TWIRLING -> RETURNING_PITCH
+        # PITCHING_UP -> DELAY -> TWIRLING -> RETURNING_PITCH
         self.state = "PITCHING_UP"
 
     def update(
@@ -353,7 +356,8 @@ class NoodleShedPrimitive(PrimitiveAction):
             error = target_pitch - current_pitch
 
             if abs(error) < self.tolerance:
-                self.state = "TWIRLING"
+                self.state = "DELAY"  # Transition to DELAY state
+                self.delay_timer = 0.0  # Reset timer
             else:
                 dq_command[0] = np.sign(error) * self.pitch_speed_rps
 
@@ -361,9 +365,24 @@ class NoodleShedPrimitive(PrimitiveAction):
                 percent_complete = (
                     abs(current_pitch - self.start_pitch_rad)
                     / abs(self.pitch_up_angle_rad)
-                ) / 3.0
+                ) / 4.0  # Now 4 stages
             else:
-                percent_complete = 0.333 / 3.0  # Move to next state if angle is ~0
+                percent_complete = 0.25 / 4.0
+
+        elif self.state == "DELAY":
+            feedback_string = f"Congregating: Settling noodles ({self.delay_timer:.1f}s / {self.delay_sec:.1f}s)..."
+            # Hold pitch position, do nothing
+            dq_command[0] = 0.0
+
+            self.delay_timer += dt
+
+            if self.delay_timer >= self.delay_sec:
+                self.state = "TWIRLING"  # Transition to TWIRLING state
+
+            if self.delay_sec > 1e-3:
+                percent_complete = 0.25 + (self.delay_timer / self.delay_sec) / 4.0
+            else:
+                percent_complete = 0.5  # Skip if no delay
 
         elif self.state == "TWIRLING":
             feedback_string = "Congregating: Twirling to tighten..."
@@ -377,15 +396,15 @@ class NoodleShedPrimitive(PrimitiveAction):
 
             if abs(self.twirl_angle_rad) > 1e-3:
                 percent_complete = (
-                    0.333
+                    0.5  # Stage 3
                     + (
                         abs(current_roll - self.start_roll_rad)
                         / abs(self.twirl_angle_rad)
                     )
-                    / 3.0
+                    / 4.0
                 )
             else:
-                percent_complete = 0.667  # Move to next state if angle is ~0
+                percent_complete = 0.75
 
         elif self.state == "RETURNING_PITCH":
             feedback_string = "Congregating: Returning to level..."
@@ -401,10 +420,10 @@ class NoodleShedPrimitive(PrimitiveAction):
                 dq_command[0] = np.sign(error) * self.pitch_speed_rps
                 if abs(self.pitch_up_angle_rad) > 1e-3:
                     percent_complete = (
-                        0.667 + (1.0 - abs(error / self.pitch_up_angle_rad)) / 3.0
+                        0.75 + (1.0 - abs(error / self.pitch_up_angle_rad)) / 4.0
                     )
                 else:
-                    percent_complete = 1.0  # Finish up
+                    percent_complete = 1.0
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
 
