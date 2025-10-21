@@ -30,6 +30,7 @@ from .primitives import (
     VibratePrimitive,
     DepositBitePrimitive,
     NoodleShedPrimitive,
+    HomingPrimitive,
 )
 
 import numpy as np
@@ -113,6 +114,7 @@ class ArticutoolController(Node):
             "DEPOSIT_BITE": DepositBitePrimitive,
             "SETTLE_TOSS": SettleTossPrimitive,
             "NOODLE_SHED": NoodleShedPrimitive,
+            "HOMING": HomingPrimitive,
             # Add new primitives here, e.g.:
             # "SIFT_AND_CENTER": SiftAndCenterPrimitive,
         }

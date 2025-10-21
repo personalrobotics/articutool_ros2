@@ -407,3 +407,76 @@ class NoodleShedPrimitive(PrimitiveAction):
                     percent_complete = 1.0  # Finish up
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
+
+
+class HomingPrimitive(PrimitiveAction):
+    """
+    Primitive to return the Articutool pitch and roll joints to
+    their zero (home) configuration using velocity control.
+
+    This is used to unwind the tool after primitives like NoodleShed
+    may have left the roll joint in a "wound-up" state.
+    """
+
+    def start(self, current_joint_positions: np.ndarray) -> None:
+        super().start(current_joint_positions)
+        # Params: [speed_rps]
+        if len(self.params) < 1:
+            self.logger.error(
+                f"[{self.__class__.__name__}] requires 1 parameter: [speed_rps]."
+            )
+            self._is_finished = True
+            self._was_successful = False
+            return
+
+        # --- Parameters ---
+        self.speed_rps = abs(self.params[0])
+
+        # --- Target State ---
+        self.target_joints_rad = np.array([0.0, 0.0])
+        self.tolerance = 0.05  # Radians
+
+        # --- State Machine ---
+        self.state = "HOMING"
+
+        # Store initial error for percentage calculation
+        self.initial_error_vec = self.target_joints_rad - current_joint_positions
+        self.initial_error_mag = np.linalg.norm(self.initial_error_vec)
+
+    def update(
+        self, dt: float, current_joint_positions: np.ndarray
+    ) -> Tuple[np.ndarray, str, float]:
+        dq_command = np.zeros(2)
+        feedback_string = ""
+        percent_complete = 0.0
+
+        if self.state == "HOMING":
+            error_vec = self.target_joints_rad - current_joint_positions
+            error_mag = np.linalg.norm(error_vec)
+
+            feedback_string = f"Homing: Pitch Error {math.degrees(error_vec[0]):.1f}°, Roll Error {math.degrees(error_vec[1]):.1f}°"
+
+            if error_mag < self.tolerance:
+                self._is_finished = True
+                self._was_successful = True
+                dq_command.fill(0.0)
+                percent_complete = 1.0
+            else:
+                # Command constant velocity in the direction of the error
+                # for each joint independently
+                dq_command[0] = np.sign(error_vec[0]) * self.speed_rps
+                dq_command[1] = np.sign(error_vec[1]) * self.speed_rps
+
+                # Stop a joint if it reaches its target
+                if abs(error_vec[0]) < self.tolerance:
+                    dq_command[0] = 0.0
+                if abs(error_vec[1]) < self.tolerance:
+                    dq_command[1] = 0.0
+
+                # Calculate percent complete
+                if self.initial_error_mag < self.tolerance:
+                    percent_complete = 1.0
+                else:
+                    percent_complete = 1.0 - (error_mag / self.initial_error_mag)
+
+        return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
