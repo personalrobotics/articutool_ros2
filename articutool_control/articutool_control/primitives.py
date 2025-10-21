@@ -306,27 +306,28 @@ class SettleTossPrimitive(PrimitiveAction):
 
 class NoodleShedPrimitive(PrimitiveAction):
     """
-    Primitive to shed loose noodles after a twirl acquisition.
-    It performs a rapid partial unwind, a sharp pitch flick, and a rewind.
+    Primitive to congregate and tighten noodles after acquisition.
+    It performs a pitch-up to gather noodles, a counter-clockwise
+    twirl to tighten, and a return-pitch to level.
     """
 
     def start(self, current_joint_positions: np.ndarray) -> None:
         super().start(current_joint_positions)
-        # Params: [unwind_angle_deg, unwind_speed_rps, flick_angle_deg, flick_speed_rps]
+        # Params: [pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps]
         if len(self.params) < 4:
             self.logger.error(
                 f"[{self.__class__.__name__}] requires 4 parameters: "
-                "[unwind_angle_deg, unwind_speed_rps, flick_angle_deg, flick_speed_rps]."
+                "[pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps]."
             )
             self._is_finished = True
             self._was_successful = False
             return
 
         # --- Parameters ---
-        self.unwind_angle_rad = math.radians(self.params[0])
-        self.unwind_speed_rps = abs(self.params[1])
-        self.flick_angle_rad = math.radians(self.params[2])
-        self.flick_speed_rps = abs(self.params[3])
+        self.pitch_up_angle_rad = math.radians(self.params[0])
+        self.pitch_speed_rps = abs(self.params[1])
+        self.twirl_angle_rad = math.radians(self.params[2])
+        self.twirl_speed_rps = abs(self.params[3])
 
         # --- Initial State ---
         self.start_pitch_rad = current_joint_positions[0]
@@ -334,8 +335,8 @@ class NoodleShedPrimitive(PrimitiveAction):
         self.tolerance = 0.05  # Radians
 
         # --- State Machine ---
-        # UNWINDING -> FLICKING_DOWN -> RETURNING_PITCH -> REWINDING
-        self.state = "UNWINDING"
+        # PITCHING_UP -> TWIRLING -> RETURNING_PITCH
+        self.state = "PITCHING_UP"
 
     def update(
         self, dt: float, current_joint_positions: np.ndarray
@@ -346,63 +347,63 @@ class NoodleShedPrimitive(PrimitiveAction):
         current_pitch = current_joint_positions[0]
         current_roll = current_joint_positions[1]
 
-        if self.state == "UNWINDING":
-            feedback_string = "Shedding: Unwinding stragglers..."
-            target_roll = self.start_roll_rad + self.unwind_angle_rad
-            error = target_roll - current_roll
+        if self.state == "PITCHING_UP":
+            feedback_string = "Congregating: Pitching up..."
+            target_pitch = self.start_pitch_rad + self.pitch_up_angle_rad
+            error = target_pitch - current_pitch
 
             if abs(error) < self.tolerance:
-                self.state = "FLICKING_DOWN"
+                self.state = "TWIRLING"
             else:
-                # Direction is now determined by the sign of the error
-                dq_command[1] = np.sign(error) * self.unwind_speed_rps
-            percent_complete = (
-                abs(current_roll - self.start_roll_rad) / abs(self.unwind_angle_rad)
-            ) / 4.0
+                dq_command[0] = np.sign(error) * self.pitch_speed_rps
 
-        elif self.state == "FLICKING_DOWN":
-            feedback_string = "Shedding: Inertial flick..."
-            target_pitch = self.start_pitch_rad + self.flick_angle_rad
-            error = target_pitch - current_pitch
+            if abs(self.pitch_up_angle_rad) > 1e-3:
+                percent_complete = (
+                    abs(current_pitch - self.start_pitch_rad)
+                    / abs(self.pitch_up_angle_rad)
+                ) / 3.0
+            else:
+                percent_complete = 0.333 / 3.0  # Move to next state if angle is ~0
+
+        elif self.state == "TWIRLING":
+            feedback_string = "Congregating: Twirling to tighten..."
+            target_roll = self.start_roll_rad + self.twirl_angle_rad
+            error = target_roll - current_roll
 
             if abs(error) < self.tolerance:
                 self.state = "RETURNING_PITCH"
             else:
-                # Direction is determined by the sign of the error
-                dq_command[0] = np.sign(error) * self.flick_speed_rps
-            percent_complete = (
-                0.25
-                + (
-                    abs(current_pitch - self.start_pitch_rad)
-                    / abs(self.flick_angle_rad)
+                dq_command[1] = np.sign(error) * self.twirl_speed_rps
+
+            if abs(self.twirl_angle_rad) > 1e-3:
+                percent_complete = (
+                    0.333
+                    + (
+                        abs(current_roll - self.start_roll_rad)
+                        / abs(self.twirl_angle_rad)
+                    )
+                    / 3.0
                 )
-                / 4.0
-            )
+            else:
+                percent_complete = 0.667  # Move to next state if angle is ~0
 
         elif self.state == "RETURNING_PITCH":
-            feedback_string = "Shedding: Resetting pitch..."
+            feedback_string = "Congregating: Returning to level..."
             target_pitch = self.start_pitch_rad
             error = target_pitch - current_pitch
-
-            if abs(error) < self.tolerance:
-                self.state = "REWINDING"
-            else:
-                # Direction is determined by the sign of the error
-                dq_command[0] = np.sign(error) * self.flick_speed_rps
-            percent_complete = 0.5 + (1.0 - abs(error / self.flick_angle_rad)) / 4.0
-
-        elif self.state == "REWINDING":
-            feedback_string = "Shedding: Securing noodle core..."
-            target_roll = self.start_roll_rad
-            error = target_roll - current_roll
 
             if abs(error) < self.tolerance:
                 self._is_finished = True
                 self._was_successful = True
                 dq_command.fill(0.0)  # Ensure we stop
+                percent_complete = 1.0
             else:
-                # Direction is determined by the sign of the error
-                dq_command[1] = np.sign(error) * self.unwind_speed_rps
-            percent_complete = 0.75 + (1.0 - abs(error / self.unwind_angle_rad)) / 4.0
+                dq_command[0] = np.sign(error) * self.pitch_speed_rps
+                if abs(self.pitch_up_angle_rad) > 1e-3:
+                    percent_complete = (
+                        0.667 + (1.0 - abs(error / self.pitch_up_angle_rad)) / 3.0
+                    )
+                else:
+                    percent_complete = 1.0  # Finish up
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
