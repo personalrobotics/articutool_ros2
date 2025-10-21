@@ -463,6 +463,9 @@ class HomingPrimitive(PrimitiveAction):
         # Store initial error for percentage calculation
         self.initial_error_vec = self.target_joints_rad - current_joint_positions
         self.initial_error_mag = np.linalg.norm(self.initial_error_vec)
+        if self.initial_error_mag < self.tolerance:
+            # Handle case where we start at home
+            self.initial_error_mag = self.tolerance
 
     def update(
         self, dt: float, current_joint_positions: np.ndarray
@@ -473,31 +476,29 @@ class HomingPrimitive(PrimitiveAction):
 
         if self.state == "HOMING":
             error_vec = self.target_joints_rad - current_joint_positions
-            error_mag = np.linalg.norm(error_vec)
 
             feedback_string = f"Homing: Pitch Error {math.degrees(error_vec[0]):.1f}°, Roll Error {math.degrees(error_vec[1]):.1f}°"
 
-            if error_mag < self.tolerance:
+            # Check for finish condition based on *individual joint* tolerances.
+            # This prevents the "dead zone" hang.
+            pitch_at_home = abs(error_vec[0]) < self.tolerance
+            roll_at_home = abs(error_vec[1]) < self.tolerance
+
+            if pitch_at_home and roll_at_home:
                 self._is_finished = True
                 self._was_successful = True
                 dq_command.fill(0.0)
                 percent_complete = 1.0
             else:
-                # Command constant velocity in the direction of the error
-                # for each joint independently
-                dq_command[0] = np.sign(error_vec[0]) * self.speed_rps
-                dq_command[1] = np.sign(error_vec[1]) * self.speed_rps
+                # If not finished, command velocity for joints *not* at home.
+                if not pitch_at_home:
+                    dq_command[0] = np.sign(error_vec[0]) * self.speed_rps
 
-                # Stop a joint if it reaches its target
-                if abs(error_vec[0]) < self.tolerance:
-                    dq_command[0] = 0.0
-                if abs(error_vec[1]) < self.tolerance:
-                    dq_command[1] = 0.0
+                if not roll_at_home:
+                    dq_command[1] = np.sign(error_vec[1]) * self.speed_rps
 
-                # Calculate percent complete
-                if self.initial_error_mag < self.tolerance:
-                    percent_complete = 1.0
-                else:
-                    percent_complete = 1.0 - (error_mag / self.initial_error_mag)
+                # Calculate percent complete based on the L2 norm
+                current_error_mag = np.linalg.norm(error_vec)
+                percent_complete = 1.0 - (current_error_mag / self.initial_error_mag)
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
