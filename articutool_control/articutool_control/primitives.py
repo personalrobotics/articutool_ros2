@@ -307,18 +307,18 @@ class SettleTossPrimitive(PrimitiveAction):
 class NoodleShedPrimitive(PrimitiveAction):
     """
     Primitive to congregate and tighten noodles after acquisition.
-    It performs a pitch-up, waits for a specified delay to
-    let noodles settle, performs a counter-clockwise twirl,
-    and finally returns the pitch to level.
+    Performs a pitch-up, waits for a delay, vibrates the
+    roll joint to shed loose noodles, and finally returns to level.
     """
 
     def start(self, current_joint_positions: np.ndarray) -> None:
         super().start(current_joint_positions)
-        # Params: [pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps, delay_sec]
-        if len(self.params) < 5:
+        # Params: [pitch_up_angle_deg, pitch_speed_rps, delay_sec, vibrate_freq_hz, vibrate_amp_deg, vibrate_dur_sec]
+        if len(self.params) < 6:
             self.logger.error(
-                f"[{self.__class__.__name__}] requires 5 parameters: "
-                "[pitch_up_angle_deg, pitch_speed_rps, twirl_angle_deg, twirl_speed_rps, delay_sec]."
+                f"[{self.__class__.__name__}] requires 6 parameters: "
+                "[pitch_up_angle_deg, pitch_speed_rps, delay_sec, "
+                "vibrate_freq_hz, vibrate_amp_deg, vibrate_dur_sec]."
             )
             self._is_finished = True
             self._was_successful = False
@@ -327,18 +327,19 @@ class NoodleShedPrimitive(PrimitiveAction):
         # --- Parameters ---
         self.pitch_up_angle_rad = math.radians(self.params[0])
         self.pitch_speed_rps = abs(self.params[1])
-        self.twirl_angle_rad = math.radians(self.params[2])
-        self.twirl_speed_rps = abs(self.params[3])
-        self.delay_sec = abs(self.params[4])
+        self.delay_sec = abs(self.params[2])
+        self.vibrate_freq_hz = self.params[3]
+        self.vibrate_amp_rad = math.radians(self.params[4])  # Convert amp to rad
+        self.vibrate_dur_sec = abs(self.params[5])
 
         # --- Initial State ---
         self.start_pitch_rad = current_joint_positions[0]
-        self.start_roll_rad = current_joint_positions[1]
         self.tolerance = 0.05  # Radians
-        self.delay_timer = 0.0  # Timer for the new delay state
+        self.delay_timer = 0.0
+        self.vibrate_timer = 0.0  # Timer for the new vibrate state
 
         # --- State Machine ---
-        # PITCHING_UP -> DELAY -> TWIRLING -> RETURNING_PITCH
+        # PITCHING_UP -> DELAY -> VIBRATING -> RETURNING_PITCH
         self.state = "PITCHING_UP"
 
     def update(
@@ -348,7 +349,6 @@ class NoodleShedPrimitive(PrimitiveAction):
         feedback_string = ""
         percent_complete = 0.0
         current_pitch = current_joint_positions[0]
-        current_roll = current_joint_positions[1]
 
         if self.state == "PITCHING_UP":
             feedback_string = "Congregating: Pitching up..."
@@ -365,9 +365,9 @@ class NoodleShedPrimitive(PrimitiveAction):
                 percent_complete = (
                     abs(current_pitch - self.start_pitch_rad)
                     / abs(self.pitch_up_angle_rad)
-                ) / 4.0  # Now 4 stages
+                ) / 4.0  # 4 stages
             else:
-                percent_complete = 0.25 / 4.0
+                percent_complete = 0.25
 
         elif self.state == "DELAY":
             feedback_string = f"Congregating: Settling noodles ({self.delay_timer:.1f}s / {self.delay_sec:.1f}s)..."
@@ -377,31 +377,33 @@ class NoodleShedPrimitive(PrimitiveAction):
             self.delay_timer += dt
 
             if self.delay_timer >= self.delay_sec:
-                self.state = "TWIRLING"  # Transition to TWIRLING state
+                self.state = "VIBRATING"  # Transition to VIBRATING state
+                self.vibrate_timer = 0.0  # Reset vibrate timer
 
             if self.delay_sec > 1e-3:
                 percent_complete = 0.25 + (self.delay_timer / self.delay_sec) / 4.0
             else:
                 percent_complete = 0.5  # Skip if no delay
 
-        elif self.state == "TWIRLING":
-            feedback_string = "Congregating: Twirling to tighten..."
-            target_roll = self.start_roll_rad + self.twirl_angle_rad
-            error = target_roll - current_roll
+        elif self.state == "VIBRATING":
+            feedback_string = f"Shedding: Vibrating ({self.vibrate_timer:.1f}s / {self.vibrate_dur_sec:.1f}s)..."
+            self.vibrate_timer += dt
 
-            if abs(error) < self.tolerance:
+            if self.vibrate_timer >= self.vibrate_dur_sec:
                 self.state = "RETURNING_PITCH"
+                dq_command[1] = 0.0  # Stop vibration
             else:
-                dq_command[1] = np.sign(error) * self.twirl_speed_rps
+                # This logic is from VibratePrimitive
+                current_phase = 2 * math.pi * self.vibrate_freq_hz * self.vibrate_timer
+                dq_command[1] = (
+                    self.vibrate_amp_rad
+                    * (2 * math.pi * self.vibrate_freq_hz)
+                    * math.cos(current_phase)
+                )
 
-            if abs(self.twirl_angle_rad) > 1e-3:
+            if self.vibrate_dur_sec > 1e-3:
                 percent_complete = (
-                    0.5  # Stage 3
-                    + (
-                        abs(current_roll - self.start_roll_rad)
-                        / abs(self.twirl_angle_rad)
-                    )
-                    / 4.0
+                    0.5 + (self.vibrate_timer / self.vibrate_dur_sec) / 4.0
                 )
             else:
                 percent_complete = 0.75
