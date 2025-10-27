@@ -124,25 +124,47 @@ class VibratePrimitive(PrimitiveAction):
     def update(
         self, dt: float, current_joint_positions: np.ndarray
     ) -> Tuple[np.ndarray, str, float]:
+        # Inside update()
         dq_command = np.zeros(2)
-        self.time_elapsed_sec += dt
 
-        if self.time_elapsed_sec >= self.duration_sec:
-            self._is_finished = True
-            self._was_successful = True
-            feedback_string = "Vibration completed."
-            percent_complete = 1.0
-        else:
-            current_phase = 2 * math.pi * self.frequency_hz * self.time_elapsed_sec
-            dq_command[1] = (
-                self.amplitude_rad
-                * (2 * math.pi * self.frequency_hz)
-                * math.cos(current_phase)
-            )
-            percent_complete = self.time_elapsed_sec / self.duration_sec
-            feedback_string = (
-                f"Vibrating: {self.time_elapsed_sec:.2f} / {self.duration_sec:.2f} sec"
-            )
+        if self.state == "VIBRATING":
+            self.time_elapsed_sec += dt
+
+            if self.time_elapsed_sec >= self.duration_sec:
+                # --- Transition to the new state ---
+                self.state = "RETURNING"
+                feedback_string = "Vibration complete, returning to start..."
+                percent_complete = 0.9  # 90% done, 10% for return
+            else:
+                # --- Original vibration logic ---
+                current_phase = 2 * math.pi * self.frequency_hz * self.time_elapsed_sec
+                dq_command[1] = (
+                    self.amplitude_rad
+                    * (2 * math.pi * self.frequency_hz)
+                    * math.cos(current_phase)
+                )
+                percent_complete = (
+                    self.time_elapsed_sec / self.duration_sec
+                ) * 0.9  # Scale to 90%
+                feedback_string = f"Vibrating: {self.time_elapsed_sec:.2f} / {self.duration_sec:.2f} sec"
+
+        elif self.state == "RETURNING":
+            # --- This logic is just like SettleTossPrimitive's "RETURN_TO_LEVEL" ---
+            error = self.start_roll_rad - current_joint_positions[1]
+            feedback_string = f"Returning... Error: {math.degrees(error):.1f} deg"
+
+            if abs(error) < self.tolerance:
+                # --- We are home, finish the primitive ---
+                self._is_finished = True
+                self._was_successful = True
+                dq_command[1] = 0.0
+                percent_complete = 1.0
+            else:
+                # --- Command velocity to return home ---
+                dq_command[1] = np.sign(error) * self.return_speed_rps
+                percent_complete = 0.9 + 0.1 * (
+                    1.0 - abs(error / (self.amplitude_rad + self.tolerance))
+                )
 
         return dq_command, feedback_string, min(1.0, max(0.0, percent_complete))
 
