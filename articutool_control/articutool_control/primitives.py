@@ -121,6 +121,10 @@ class VibratePrimitive(PrimitiveAction):
         self.duration_sec = self.params[2]
         self.time_elapsed_sec = 0.0
 
+        # --- State Machine ---
+        # VIBRATING ->  RETURNING
+        self.state = "VIBRATING"
+
     def update(
         self, dt: float, current_joint_positions: np.ndarray
     ) -> Tuple[np.ndarray, str, float]:
