@@ -116,14 +116,27 @@ class VibratePrimitive(PrimitiveAction):
             self._was_successful = False
             return
 
+        # --- Parameters ---
         self.frequency_hz = self.params[0]
         self.amplitude_rad = self.params[1]
         self.duration_sec = self.params[2]
+
+        # --- State Initialization ---
         self.time_elapsed_sec = 0.0
 
-        # --- State Machine ---
-        # VIBRATING ->  RETURNING
+        # 1. Store the starting position to return to
+        self.start_roll_rad = current_joint_positions[
+            1
+        ]  # This is joint index 1 for roll
+
+        # 2. State machine: VIBRATING, RETURNING
         self.state = "VIBRATING"
+
+        # 3. Parameters for returning home
+        self.return_speed_rps = (
+            0.5  # A reasonable default, make it a 4th param if needed
+        )
+        self.tolerance = 0.05  # Radians, consistent with other primitives
 
     def update(
         self, dt: float, current_joint_positions: np.ndarray
