@@ -32,6 +32,7 @@ from .primitives import (
     NoodleShedPrimitive,
     HomingPrimitive,
 )
+from .articutool_kinematics import ArticutoolAnalyticalKinematics
 
 import numpy as np
 import math
@@ -65,6 +66,8 @@ class ArticutoolController(Node):
 
         self._declare_parameters()
         self._load_parameters()
+
+        self.kin_model = ArticutoolAnalyticalKinematics(epsilon=self.EPSILON)
 
         self.pin_model: Optional[pin.Model] = None
         self.pin_data: Optional[pin.Data] = None
@@ -878,10 +881,15 @@ class ArticutoolController(Node):
             )
             c_phi_o, s_phi_o = math.cos(phi_o), math.sin(phi_o)
             c_psi_o, s_psi_o = math.cos(psi_o), math.sin(psi_o)
+
+            # y_eff is the "effective up vector" in the tooltip frame
             y_eff = np.array([-s_psi_o * c_phi_o, c_psi_o * c_phi_o, s_phi_o])
-            R_F0_tooltip_mat = np.array(
-                [[cp * sr, cp * cr, -sp], [-cr, sr, 0], [sp * sr, sp * cr, cp]]
+
+            # Get the rotation matrix from the centralized kinematic model
+            R_F0_tooltip_mat = self.kin_model.compute_fk_matrix(
+                theta_p_curr, theta_r_curr
             )
+
             y_eff_in_F0 = R_F0_tooltip_mat @ y_eff
             R_FilterW_F0: R = (
                 self.current_filterworld_to_imu_raw * self.R_IMU_TO_HANDLE_FIXED_SCIPY
@@ -933,15 +941,16 @@ class ArticutoolController(Node):
                 )
             self.last_error_leveling = np.copy(error_vec_FilterW)
             omega_corr_in_F0 = R_FilterW_F0.inv().apply(omega_corr_FilterW)
-            dR_dtheta_p_mat = np.array(
-                [[-sp * sr, -sp * cr, -cp], [0, 0, 0], [cp * sr, cp * cr, -sp]]
+
+            # Get the matrix partial derivatives from the centralized kinematic model
+            dR_dtheta_p_mat, dR_dtheta_r_mat = self.kin_model.compute_fk_partials(
+                theta_p_curr, theta_r_curr
             )
-            dR_dtheta_r_mat = np.array(
-                [[cp * cr, -cp * sr, 0], [sr, cr, 0], [sp * cr, -sp * sr, 0]]
-            )
+
             J_col1 = dR_dtheta_p_mat @ y_eff
             J_col2 = dR_dtheta_r_mat @ y_eff
             J_eff_in_F0 = np.column_stack((J_col1, J_col2))
+
             if J_eff_in_F0.shape != (3, 2):
                 self.get_logger().error(
                     f"Leveling Jacobian shape error: {J_eff_in_F0.shape}"
