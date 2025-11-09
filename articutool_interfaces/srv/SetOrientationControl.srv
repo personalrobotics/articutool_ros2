@@ -3,7 +3,6 @@
 # Define control modes
 uint8 MODE_DISABLED = 0  # Explicitly disable control
 uint8 MODE_LEVELING = 1  # Gravity-based leveling (yaw invariant)
-uint8 MODE_FULL_ORIENTATION = 2 # Calibrated, robot-base relative control
 
 uint8 control_mode       # Use constants above
 
