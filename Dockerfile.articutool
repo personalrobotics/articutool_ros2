@@ -1,9 +1,20 @@
-FROM ros2_humble_base:latest
+# 1. Start from the official ROS 2 Humble base image
+FROM ros:humble-ros-base@sha256:dfc94c85d8e01f230951b2a85ca5576e08473081c3da5fbbe8f3ab844703b9ba
 
+# Add a default rosinstall file argument
+ARG ROSINSTALL_FILE=articutool.https.rosinstall
+
+# Set non-interactive mode
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV ROS_DOMAIN_ID=42
 
-# Now, update and install ROS2 control and other dependencies
+# 2. Install core tools and Articutool dependencies
 RUN apt-get update && apt-get install -y \
+    git python3-wstool python3-rosdep unzip curl gnupg2 \
+    python3-pip python3-colcon-common-extensions \
+    build-essential cmake libboost-all-dev libeigen3-dev \
+    vim sudo screen net-tools iputils-ping \
     ros-humble-ros2-control \
     ros-humble-ros2-controllers \
     ros-humble-controller-manager \
@@ -20,56 +31,67 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies with pip
-RUN pip3 install pinocchio pyserial numpy scipy matplotlib filterpy
+# 3. Create 'ros' user
+RUN useradd -m -s /bin/bash ros && \
+    echo "ros:ros" | chpasswd && \
+    adduser ros sudo && \
+    echo "ros ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-# Create Articutool workspace directory
-RUN mkdir -p /articutool_ws/src
+# 4. Pre-trust SSH hosts
+USER ros
+RUN mkdir -p $HOME/.ssh && \
+    touch $HOME/.ssh/known_hosts && \
+    chmod 700 $HOME/.ssh && \
+    chmod 600 $HOME/.ssh/known_hosts
 
-# Clone Articutool repository(s)
-RUN git clone https://github.com/personalrobotics/articutool_ros2.git /articutool_ws/src/articutool_ros2
+# 5. Configure Workspace & Sources
+ENV HOME=/home/ros
 
-# --- Add ada_moveit and ada_description via updatable sparse checkout ---
-# This strategy clones ada_ros2 into a subdirectory and uses sparse checkout.
-# This keeps the .git folder with the sparsely checked-out content,
-# making it updatable by the entrypoint script.
-RUN cd /articutool_ws/src && \
-    git clone --no-checkout --depth 1 --branch jjaime2/articutool-integration https://github.com/personalrobotics/ada_ros2.git ada_ros2_dependencies && \
-    cd ada_ros2_dependencies && \
-    git sparse-checkout init --cone && \
-    git sparse-checkout set ada_moveit ada_description && \
-    git checkout jjaime2/articutool-integration
-    # Result:
-    # /articutool_ws/src/ada_ros2_dependencies/.git
-    # /articutool_ws/src/ada_ros2_dependencies/ada_moveit/
-    # /articutool_ws/src/ada_ros2_dependencies/ada_description/
+# Create directory as root first to ensure permissions
+USER root
+RUN mkdir -p $HOME/colcon_ws/src && \
+    chown -R ros:ros $HOME/colcon_ws
 
-# Update rosdep and apt repositories (rosdep update was run before, apt-get update here again after adding key)
-RUN rosdep update && apt-get update
+# Switch to ros user for wstool
+USER ros
+WORKDIR $HOME/colcon_ws/src
 
-# Install Articutool dependencies with rosdep
-# Ensure this step runs AFTER the ROS GPG key is fixed and apt-get update has succeeded
-RUN rosdep install --from-paths /articutool_ws/src --ignore-src -r -y --rosdistro humble
+# Initialize workspace
+RUN wstool init
 
-# Build Articutool workspace
-RUN bash -c "source /opt/ros/humble/setup.bash && cd /articutool_ws && colcon build --symlink-install"
+# Clone the installer tool
+RUN git clone --branch jjaime2/articutool-ros-install https://github.com/personalrobotics/pr-rosinstalls.git $HOME/pr-rosinstalls
 
-# Source Articutool setup in .bashrc for interactive shells
-RUN echo "source /articutool_ws/install/setup.bash" >> /root/.bashrc
-RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+# Merge the rosinstall file
+RUN wstool merge $HOME/pr-rosinstalls/$ROSINSTALL_FILE
 
-# Set the working directory
-WORKDIR /articutool_ws
+# Download all code
+RUN wstool up
 
-# Install Python dependencies from requirements.txt
-# Ensure this path is correct relative to the WORKDIR
-RUN pip install --no-cache-dir -r src/articutool_ros2/requirements.txt
+# 6. Install Python Dependencies
+WORKDIR $HOME/colcon_ws
+RUN pip install -r src/articutool_ros2/requirements.txt
 
-# Copy and set up the entrypoint script
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# 7. Install Dependencies via rosdep
+# Added sudo apt-get update so rosdep can find packages
+RUN sudo apt-get update && \
+    (sudo rosdep init || echo "rosdep already initialized") && \
+    rosdep update && \
+    rosdep install --from-paths src -y --ignore-src --rosdistro humble
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# 8. Build Workspace
+RUN . /opt/ros/humble/setup.sh && \
+    colcon build --symlink-install --packages-skip ada_hardware
 
-# Set the default command to execute
-CMD ["ros2", "launch", "articutool_system", "articutool.launch.py", "sim:=real"]
+# 9. Configure Shell Environment
+RUN echo "source /opt/ros/humble/setup.bash" >> $HOME/.bashrc && \
+    echo "source $HOME/colcon_ws/install/setup.bash" >> $HOME/.bashrc
+
+# 10. Final Configuration
+USER root
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+USER ros
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["bash"]
