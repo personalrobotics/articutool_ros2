@@ -400,9 +400,15 @@ class ResenseFtNode(Node):
                         unpacked_data = struct.unpack(
                             self.STRUCT_FORMAT, raw_data_bytes
                         )
-                        fx_raw, fy_raw, fz_raw, mx_raw, my_raw, mz_raw, _ = (
-                            unpacked_data
-                        )
+                        (
+                            fx_raw,
+                            fy_raw,
+                            fz_raw,
+                            mx_raw,
+                            my_raw,
+                            mz_raw,
+                            _,
+                        ) = unpacked_data
                         self.get_logger().debug(
                             f"Raw FT: Fx={fx_raw:.3f} Fy={fy_raw:.3f} Fz={fz_raw:.3f} Mx={mx_raw:.3f} My={my_raw:.3f} Mz={mz_raw:.3f}"
                         )
